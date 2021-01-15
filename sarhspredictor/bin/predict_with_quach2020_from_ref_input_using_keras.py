@@ -13,15 +13,15 @@ import xarray
 import numpy as np
 import datetime
 import pdb
-sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
-from load_quach_2020_keras_model import POSSIBLES_MODELS
+#sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
+from sarhspredictor.lib.load_quach_2020_keras_model import POSSIBLES_MODELS
 #DIR_REF = '/home/cercache/users/jstopa/sar/empHs/forAG' #corrupted S variable
 DIR_REF = '/home1/datawork/agrouaze/data/sentinel1/cwave/reference_input_output_dataset_from_Jstopa_quach2020/' #corrected S variable in
 
 import xarray
 import datetime
 import netCDF4
-from sarhs import preprocess
+from sarhspredictor.lib.sarhs import preprocess
 
 
 
@@ -319,18 +319,13 @@ def predict_and_save(ref_ds,outputdir,hs_ref,hs_ref_std,input_ref_file,modelname
     logging.info('finished')
 
 def choose_model(args):
+    """
+
+    :param args:
+    :return:
+    """
     MODEL = None
     MODEL = POSSIBLES_MODELS[args.modelversion]()
-    # if args.modelversion == 'justin_std' :
-    #     MODEL = load_quach2020_model()
-    # elif args.modelversion == 'heteroskadastic' :
-    #     MODEL = load_quach2020_model_v2()
-    # elif args.modelversion == 'justin_basic' :#ne marche pas car pas de prediction sur uncertainty
-    #     MODEL = load_quach2020_model_basic()
-    # elif args.modelversion == 'only_std' :
-    #     MODEL = load_quach2020_model_45_std_tuned()
-    # else :
-    #     raise Exception('model %s unknown' % args.modelversion)
     return MODEL
 
 if __name__ =='__main__':

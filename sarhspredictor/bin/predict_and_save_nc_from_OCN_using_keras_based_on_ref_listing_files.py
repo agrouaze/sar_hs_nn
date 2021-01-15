@@ -38,6 +38,17 @@ def get_fullpath_ocn_from_refdataset(inputfile,dev=False):
     return paths,hs_ref,hs_ref_std
 
 def predict_and_save(ref_file_input,paths_ocn,outputdir,hs_ref,hs_ref_std,model,modelname):
+    """
+
+    :param ref_file_input: (str) path of the nc file containing the input SAR and output Hs+Hs_std
+    :param paths_ocn:
+    :param outputdir:
+    :param hs_ref:
+    :param hs_ref_std:
+    :param model:
+    :param modelname:
+    :return:
+    """
     newpaths = []
     for ffi,ff in enumerate(paths_ocn):
         ff = ff.decode()

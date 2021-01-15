@@ -4,3 +4,5 @@
 *.pyc
 
 sarhspredictor.egg-info/
+
+dist/

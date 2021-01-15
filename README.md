@@ -7,28 +7,30 @@ Used to produce CCI SeaState SAR product.
 sarhs lib is a copy paste from https://github.com/hawaii-ai/SAR-Wave-Height .
 
  # Installation
- install `poetry` binary
+1) install `poetry` binary
  ```bash
 curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
 ```
- create a conda env
+2) create a conda env
  ```
  conda create -n sarhs python=3.7.8
  conda activate sarhs
 ```
-add setuptools
+3) add setuptools
  ```bash
 conda install -c anaconda setuptools
 ```
-create a setupy.py with `poetry`
-```bash
-$HOME/.poetry/bin/poetry build --format sdist && tar --wildcards -xvf dist/*.tar.gz -O '*/setup.py' > setup.py
-```
-clone the git repository.
+5) clone the git repository.
 ```bash
 git clone https://github.com/grouny/sar_hs_nn.git
 cd sar_hs_nn
 ```
+
+4) create a setupy.py with `poetry`
+```bash
+$HOME/.poetry/bin/poetry build --format sdist && tar --wildcards -xvf dist/*.tar.gz -O '*/setup.py' > setup.py
+```
+
 
 install the sarhspredictor and its dependencies
 ```bash
@@ -42,4 +44,12 @@ if the previous command failed try to run the command in error by yourself. It s
 check installation
 ```python
 import sarhspredictor
+```
+
+edit the sarhspredictor/config.py file in order to set the path of the different models .h5
+
+# usage
+to create a netCDF file containing the predictions starting from the reference inputs (J. Stopa nc file):
+```python
+python sarhspredictor/bin/predict_and_save_nc_from_OCN_using_keras_based_on_ref_listing_files.py --modelversion heteroskedastic_2017.h5
 ```
