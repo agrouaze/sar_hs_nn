@@ -1,0 +1,14 @@
+# put here only additional package for extended/developpement
+# for mandatory packages, see setup.py
+# https://packaging.python.org/discussions/install-requires-vs-requirements/
+python==3.7.8
+keras==2.3.1
+keras-applications==1.0.8
+keras-preprocessing==1.1.0
+numpy==1.19.2
+scipy==1.5.2
+tensorflow==1.15.0
+tensorflow-base==1.15.0
+sherpa==4.12.1
+xarray==0.16.2
+netcdf4==1.5.4
