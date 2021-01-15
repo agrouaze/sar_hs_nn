@@ -8,77 +8,23 @@ if INTERACTIVE:
 SHERPA_TRIAL_ID = os.environ.get('SHERPA_TRIAL_ID', '0')
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true' # Needed to avoid cudnn bug.
 import logging
-#import sherpa
-#import numpy as np
-#import pandas as pd
-#import h5py
-#from pathlib import Path
-#from shutil import copyfile
 import tensorflow as tf
-
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model, load_model
-#from tensorflow.keras.utils import plot_model
 import tensorflow.keras as keras
-import importlib
 from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017
-
 print('keras',keras.__version__)
 print('tensorflow',tf.__version__)
 print()
-#import keras.backend as K
 from sarhspredictor.lib.sarhs.heteroskedastic import Gaussian_NLL, Gaussian_MSE
 CURDIRSCRIPT = os.path.dirname(__file__)
-# def gaussian_nll ( ytrue,ypreds ) :
-#     """
-#     Keras implmementation of multivariate Gaussian negative loglikelihood loss function.
-#     This implementation implies diagonal covariance matrix.
-#
-#     Parameters
-#     ----------
-#     ytrue: tf.tensor of shape [n_samples, n_dims]
-#         ground truth values
-#     ypreds: tf.tensor of shape [n_samples, n_dims*2]
-#         predicted mu and logsigma values (e.g. by your neural network)
-#
-#     Returns
-#     -------
-#     neg_log_likelihood: float
-#         negative loglikelihood averaged over samples
-#
-#     This loss can then be used as a target loss for any keras model, e.g.:
-#         model.compile(loss=gaussian_nll, optimizer='Adam')
-#
-#     """
-#
-#     n_dims = int(int(ypreds.shape[1]) / 2)
-#     mu = ypreds[:,0 :n_dims]
-#     logsigma = ypreds[:,n_dims :]
-#
-#     mse = -0.5 * K.sum(K.square((ytrue - mu) / K.exp(logsigma)),axis=1)
-#     sigma_trace = -K.sum(logsigma,axis=1)
-#     log2pi = -0.5 * n_dims * np.log(2 * np.pi)
-#
-#     log_likelihood = mse + sigma_trace + log2pi
-#
-#     return K.mean(-log_likelihood)
-
-
-
-# try :
-#     import keras_extras
-#     importlib.reload(keras_extras.losses.dirichlet)
-#     from keras_extras.losses.dirichlet import Gaussian_NLL,Gaussian_MSE
-# except :  # agrouaze change: I dont know which lib is the keras_extras
-#     Gaussian_MSE = tf.keras.losses.MeanSquaredError()
-#     Gaussian_NLL = gaussian_nll
-
 
 def load_quach2020_model_basic():
     """
     file provided by Justin in December 2020
+    it only predicts Hs and not the Hs_std
     :return:
     """
     #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
@@ -90,7 +36,7 @@ def load_quach2020_model_basic():
 
 def load_quach2020_model():
     """
-    version with STD uncertainty better ???
+    version with STD uncertainty inspired from https://github.com/hawaii-ai/SAR-Wave-Height/blob/master/notebooks/train_uncertainty_with_existing.ipynb
     file provided by Justin in December 2020
     :return:
     """
@@ -132,38 +78,42 @@ def load_quach2020_model_v2():
 
 
 def load_quach2020_model_45_std_tuned():
+    """
+    temptative to load only the model_45_std_tuned.h5 model by itself -> validation tests not conclusive
+    :return:
+    """
     stdtuned_path = os.path.join(CURDIRSCRIPT,'model_45_std_tuned.h5')
     custom_objects = {'Gaussian_NLL' : Gaussian_NLL,'Gaussian_MSE' : Gaussian_MSE}
     model = load_model(stdtuned_path,custom_objects=custom_objects)
     return model
 
 
-def load_like_in_notebook_train_uncertainty_with_existing():
-    """
-    problem I don't have the  "valid" dataset in hdf5.for now.
-    :return:
-    """
-    #file_model = './models/model_45.h5'
-    #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
-    file_model = model45path
-    model_base = load_model(file_model)
-    # Fine tune.
-    opt = Adam(lr=0.00001)
-    model_base.compile(loss='mae', optimizer=opt, metrics=['mae', 'mse'])
-    history = model_base.fit(valid, epochs=5, verbose= 1 if INTERACTIVE else 2)
-    # Add back output that predicts uncertainty.
-    base_inputs = model_base.input
-    base_penultimate = model_base.get_layer('dense_7').output
-    base_output = model_base.output
-    model_std = load_model(model45stdpath, custom_objects={'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE})
-    x = model_std.get_layer('std_hidden')(base_penultimate)
-    std_output = model_std.get_layer('std_output')(x)
-    output = concatenate([base_output, std_output], axis=-1)
-    model = Model(inputs=base_inputs, outputs=output)
-    # Compile and save.
-    opt = Adam(lr=0.0001)
-    model.compile(loss=Gaussian_NLL, optimizer=opt, metrics=[Gaussian_MSE])
-    return model
+# def load_like_in_notebook_train_uncertainty_with_existing():
+#     """
+#     problem I don't have the  "valid" dataset in hdf5.for now.
+#     :return:
+#     """
+#     #file_model = './models/model_45.h5'
+#     #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+#     file_model = model45path
+#     model_base = load_model(file_model)
+#     # Fine tune.
+#     opt = Adam(lr=0.00001)
+#     model_base.compile(loss='mae', optimizer=opt, metrics=['mae', 'mse'])
+#     history = model_base.fit(valid, epochs=5, verbose= 1 if INTERACTIVE else 2)
+#     # Add back output that predicts uncertainty.
+#     base_inputs = model_base.input
+#     base_penultimate = model_base.get_layer('dense_7').output
+#     base_output = model_base.output
+#     model_std = load_model(model45stdpath, custom_objects={'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE})
+#     x = model_std.get_layer('std_hidden')(base_penultimate)
+#     std_output = model_std.get_layer('std_output')(x)
+#     output = concatenate([base_output, std_output], axis=-1)
+#     model = Model(inputs=base_inputs, outputs=output)
+#     # Compile and save.
+#     opt = Adam(lr=0.0001)
+#     model.compile(loss=Gaussian_NLL, optimizer=opt, metrics=[Gaussian_MSE])
+#     return model
 
 POSSIBLES_MODELS = {
     'heteroskedastic_2017.h5' : load_quach2020_model_v2,
