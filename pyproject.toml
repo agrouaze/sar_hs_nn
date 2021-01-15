@@ -1,0 +1,86 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "python-bootstrap"
+version = "0.0.0"
+description = "Hs prediction from SAR"
+license = "Apache-2.0"
+authors = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
+maintainers = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.7",
+]
+keywords = ["ifremer", "utilities","sar","hs","NN"]
+
+exclude = [
+    # exclude tests directory from wheel (only on sdist)
+    { path= "tests", format = "wheel" }
+]
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
+pattern = "^v?(?P<base>\\d+\\.\\d+\\.\\d+)(-?((?P<stage>[a-zA-Z]+)\\.?(?P<revision>\\d+)?))?$"
+
+[[tool.poetry.source]]
+# Ifremer PyPI repository
+name = "nexus-isi"
+url = "https://nexus-test.ifremer.fr/repository/pypi-public-release/simple"
+default = true
+
+[tool.poetry.dependencies]
+python = ">= 3.7, < 4"
+
+# log management
+loguru = "0.5"
+
+# template management
+jinja2 = "^2"
+click = "^7.1"
+
+[tool.poetry.dev-dependencies]
+
+# static analysis
+flake8 = "^3.8"
+flake8-docstrings = "^1.5"
+pylint = "^2.6"
+
+# unit tests
+pytest = "^6"
+pytest-cov = "^2"
+pytest-benchmark = "^3"
+
+# documentation
+mkdocs = "^1"
+mkapi = "^1"
+
+[tool.poetry.scripts]
+greet = "python_bootstrap.greeting.cli:main"
+
+
+[tool.pylint.messages_control]
+disable = [
+    "bad-continuation",
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "invalid-name"
+]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.isort]
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
