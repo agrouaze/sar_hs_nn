@@ -38,6 +38,7 @@ url = "https://nexus-test.ifremer.fr/repository/pypi-public-release/simple"
 default = true
 
 [tool.poetry.dependencies]
+#sarhspredictor = { path = "./sarhspredictor/", develop = true }
 python = ">= 3.7, < 4"
 poetry = "1.1.4"
 keras="2.3.1"

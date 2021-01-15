@@ -2,3 +2,5 @@
 .idea/
 
 *.pyc
+
+sarhspredictor.egg-info/

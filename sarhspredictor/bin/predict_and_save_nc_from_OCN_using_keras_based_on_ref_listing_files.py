@@ -7,9 +7,9 @@ en utilisant le model quach 2020
 """
 import logging
 import sys
-sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
-from load_quach_2020_keras_model import POSSIBLES_MODELS
-from predict_with_quach2020_on_OCN_using_keras import main_level_1
+#sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
+from sarhspredictor.lib.load_quach_2020_keras_model import POSSIBLES_MODELS
+from sarhspredictor.lib.predict_with_quach2020_on_OCN_using_keras import main_level_1
 import xarray
 import pdb
 import os

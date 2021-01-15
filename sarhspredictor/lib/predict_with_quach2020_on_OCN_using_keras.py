@@ -13,39 +13,10 @@ if INTERACTIVE:
 SHERPA_TRIAL_ID = os.environ.get('SHERPA_TRIAL_ID', '0')
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true' # Needed to avoid cudnn bug.
 import logging
-#import sherpa
 import numpy as np
-#import pandas as pd
-#import h5py
-#from pathlib import Path
-#from shutil import copyfile
-#import tensorflow as tf
-#from tensorflow.keras.callbacks import *
-#from tensorflow.keras.layers import concatenate
-#from tensorflow.keras.optimizers import Adam
-#from tensorflow.keras.models import Model, load_model
-#from tensorflow.keras.utils import plot_model
-#import tensorflow.keras as keras
-import sys
-sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
-#import sarhs.generator
-#import importlib
-
 import xarray
-#import datetime
-from sarhs import preprocess
-
-#from load_quach_2020_keras_model import load_quach2020_model
-#from load_quach_2020_keras_model import POSSIBLES_MODELS
-from preproc_ocn_wv import preproc_ocn_wv
-
-# try:
-#     print('first try to  load_quach2020_model')
-#     MODEL = load_quach2020_model()
-# except:
-#     print('second try to  load_quach2020_model (except)')
-#     MODEL = load_quach2020_model()
-
+from sarhspredictor.lib.sarhs import preprocess
+from sarhspredictor.lib.preproc_ocn_wv import preproc_ocn_wv
 
 
 def prepare_ocn_wv_data(pattern_path):

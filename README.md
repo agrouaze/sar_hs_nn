@@ -34,6 +34,10 @@ install the sarhspredictor and its dependencies
 ```bash
 pip install -e .
 ```
+if the previous command failed try to run the command in error by yourself. It should looks like:
+```bash
+../bin/python3.7 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'../sar_hs_nn/setup.py'"'"'; __file__='"'"'../sar_hs_nn/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' develop --no-deps
+```
 
 check installation
 ```python
