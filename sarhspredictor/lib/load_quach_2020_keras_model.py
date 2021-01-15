@@ -8,25 +8,28 @@ if INTERACTIVE:
 SHERPA_TRIAL_ID = os.environ.get('SHERPA_TRIAL_ID', '0')
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true' # Needed to avoid cudnn bug.
 import logging
-import sherpa
-import numpy as np
-import pandas as pd
-import h5py
-from pathlib import Path
-from shutil import copyfile
+#import sherpa
+#import numpy as np
+#import pandas as pd
+#import h5py
+#from pathlib import Path
+#from shutil import copyfile
 import tensorflow as tf
 
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model, load_model
-from tensorflow.keras.utils import plot_model
+#from tensorflow.keras.utils import plot_model
 import tensorflow.keras as keras
 import importlib
+from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017
+
 print('keras',keras.__version__)
 print('tensorflow',tf.__version__)
 print()
-import keras.backend as K
+#import keras.backend as K
+from sarhspredictor.lib.sarhs.heteroskedastic import Gaussian_NLL, Gaussian_MSE
 CURDIRSCRIPT = os.path.dirname(__file__)
 # def gaussian_nll ( ytrue,ypreds ) :
 #     """
@@ -63,7 +66,7 @@ CURDIRSCRIPT = os.path.dirname(__file__)
 #     return K.mean(-log_likelihood)
 
 
-from sarhs.heteroskedastic import Gaussian_NLL, Gaussian_MSE
+
 # try :
 #     import keras_extras
 #     importlib.reload(keras_extras.losses.dirichlet)
@@ -78,7 +81,8 @@ def load_quach2020_model_basic():
     file provided by Justin in December 2020
     :return:
     """
-    file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    file_model = model45path
     logging.info('file_model: %s',file_model)
     model_base = load_model(file_model)
     return model_base
@@ -90,14 +94,16 @@ def load_quach2020_model():
     file provided by Justin in December 2020
     :return:
     """
-    file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    file_model = model45path
     logging.info('file_model: %s',file_model)
     model_base = load_model(file_model)
     # Add back output that predicts uncertainty.
     base_inputs = model_base.input
     base_penultimate = model_base.get_layer('dense_7').output
     base_output = model_base.output
-    stdtuned_path = os.path.join(CURDIRSCRIPT,'model_45_std_tuned.h5')
+    #stdtuned_path = os.path.join(CURDIRSCRIPT,'model_45_std_tuned.h5')
+    stdtuned_path = model45stdpath
     logging.info('stdtuned_path %s',stdtuned_path)
     model_std = load_model(stdtuned_path,#'./model_45_std_tuned.h5',
                            custom_objects={'Gaussian_NLL' : Gaussian_NLL,'Gaussian_MSE' : Gaussian_MSE})
@@ -118,7 +124,8 @@ def load_quach2020_model_v2():
     based on the example notebook provided by P. Sadowsky: predict.ipynb
     :return:
     """
-    file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+    #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+    file_model = model_heteroskedastic_2017
     custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
     model = load_model(file_model, custom_objects=custom_objects)
     return model
@@ -133,11 +140,12 @@ def load_quach2020_model_45_std_tuned():
 
 def load_like_in_notebook_train_uncertainty_with_existing():
     """
-    Un problem je nai pas le dataset "valid" en hdf5.
+    problem I don't have the  "valid" dataset in hdf5.for now.
     :return:
     """
     #file_model = './models/model_45.h5'
-    file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    #file_model = os.path.join(CURDIRSCRIPT,'model_45.h5')
+    file_model = model45path
     model_base = load_model(file_model)
     # Fine tune.
     opt = Adam(lr=0.00001)
@@ -147,7 +155,7 @@ def load_like_in_notebook_train_uncertainty_with_existing():
     base_inputs = model_base.input
     base_penultimate = model_base.get_layer('dense_7').output
     base_output = model_base.output
-    model_std = load_model('./model_45_std.h5', custom_objects={'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE})
+    model_std = load_model(model45stdpath, custom_objects={'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE})
     x = model_std.get_layer('std_hidden')(base_penultimate)
     std_output = model_std.get_layer('std_output')(x)
     output = concatenate([base_output, std_output], axis=-1)
