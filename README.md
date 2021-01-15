@@ -51,5 +51,9 @@ edit the sarhspredictor/config.py file in order to set the path of the different
 # usage
 to create a netCDF file containing the predictions starting from the reference inputs (J. Stopa nc file):
 ```python
+python sarhspredictor/bin/predict_with_quach2020_from_ref_input_using_keras.py --modelversion heteroskedastic_2017.h5
+```
+to create a netCDF file containing the predictions starting from ESA S-1 Level-2 WV: 
+```python
 python sarhspredictor/bin/predict_and_save_nc_from_OCN_using_keras_based_on_ref_listing_files.py --modelversion heteroskedastic_2017.h5
 ```
