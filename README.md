@@ -2,6 +2,7 @@
 With this python library you can:
  1) predict Hs and Hs_std from SAR Sentinel-1 mission in WV.
  2) compute the 20 C-WAVE params.
+ 3) generate netCDF file in the CCI Sea state official format.
  
 Based on Quach 2020 model: https://authors.library.caltech.edu/104562/1/09143500.pdf 
 
@@ -53,11 +54,14 @@ import sarhspredictor
 edit the `sarhspredictor/config.py` file in order to set the path of the different models .h5
 
 # usage
+to predict a Hs from WV Sentinel-1 SAR Level-2 product, follow this [python notebook demo](https://github.com/grouny/sar_hs_nn/blob/main/sarhspredictor/examples/predict_Hs_using_quach2020_model_from_S1_WV_OCN_files.ipynb):
+
+
 to create a netCDF file containing the predictions starting from the reference inputs (J. Stopa nc file):
-```python
+```bash
 python sarhspredictor/bin/predict_with_quach2020_from_ref_input_using_keras.py --modelversion heteroskedastic_2017.h5
 ```
 to create a netCDF file containing the predictions starting from ESA S-1 Level-2 WV: 
-```python
+```bash
 python sarhspredictor/bin/predict_and_save_nc_from_OCN_using_keras_based_on_ref_listing_files.py --modelversion heteroskedastic_2017.h5
 ```
