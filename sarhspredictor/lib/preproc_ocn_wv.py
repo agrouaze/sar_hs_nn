@@ -5,20 +5,22 @@
 import logging
 import xarray
 import os
+import copy
 import datetime
 import sys
 import time
 import numpy as np
-sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
-from sarhs import preprocess
-sys.path.append('/home1/datahome/agrouaze/git/mpc/qualitycheck/')
-sys.path.append('/home1/datahome/agrouaze/git/npCWAVE/')
-import compute_hs_total_SAR_v2
+#sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
+from sarhspredictor.lib.sarhs import preprocess
+#sys.path.append('/home1/datahome/agrouaze/git/mpc/qualitycheck/')
+#sys.path.append('/home1/datahome/agrouaze/git/npCWAVE/')
+#import compute_hs_total_SAR_v2
+from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 
 
 def preproc_ocn_wv(ds):
     """
-
+    read and preprocess data for training/usage of the model
     :param ds:
     :return:
     """
@@ -48,20 +50,21 @@ def preproc_ocn_wv(ds):
     latSAR = ds['oswLat'].values.squeeze()
     satellite = os.path.basename(filee)[0:3]
     subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRe,ks1,ths1,kx,ky,\
-    cspcReX_not_conservativ,S = compute_hs_total_SAR_v2.format_input_CWAVE_vector_from_OCN(cspcRe,
+    cspcReX_not_conservativ,S = format_input_CWAVE_vector_from_OCN(cspcRe,
                                                                             cspcIm,ths1,ta,incidenceangle,
                                                                             s0,nv,ks1,fdatedt,lonSAR,latSAR,satellite)
 
     varstoadd = ['S','cwave', 'dxdt', 'latlonSARcossin', 'todSAR',
-                 'incidence', 'satellite','oswQualityCrossSpectraRe','oswQualityCrossSpectraIm']
-    additional_vars_for_validation = ['oswLon','oswLat','oswLandFlag','oswIncidenceAngle']
+                 'incidence','incidence_angle', 'satellite','oswQualityCrossSpectraRe','oswQualityCrossSpectraIm']
+    additional_vars_for_validation = ['oswLon','oswLat','oswLandFlag','oswIncidenceAngle','oswWindSpeed','platformName',
+                                      'nrcs','nv','heading']
     varstoadd += additional_vars_for_validation
     if 'time' in ds:
         newds['time'] = ds['time']
     else:
         newds['time'] = xarray.DataArray(np.array([fdatedt]),dims=['time'],coords={'time':[0]})
     for vv in varstoadd:
-
+        logging.debug('start format variable :%s',vv)
         if vv in ['cwave']:
             dimszi = ['time','cwavedim']
             coordi= {'time':[fdatedt],'cwavedim':np.arange(22)}
@@ -97,12 +100,44 @@ def preproc_ocn_wv(ds):
             dimszi = ['time','incdim']
             coordi= {'time':[fdatedt],'incdim':np.arange(2)}
             incidence = preprocess.conv_incidence(ds['oswIncidenceAngle'].values.squeeze())
+            #logging.info('conv_incidence output %s %s',incidence,incidence.shape)
             newds[vv] = xarray.DataArray(data=incidence,dims=dimszi,coords=coordi)
+            #logging.info('ok for incidence conv')
+        elif vv in ['incidence_angle']:
+            #logging.info('start incidence_angle')
+            dimszi = ['time']
+            olddims = [x for x in ds['oswIncidenceAngle'].dims if x not in ['oswAzSize','oswRaSize']]
+            coordi = {}
+            for didi in olddims :
+                coordi[didi] = ds['oswIncidenceAngle'].coords[didi].values
+            coordi['time'] = [fdatedt]
+            #logging.debug('ds[oswIncidenceAngle] : %s %s',ds['oswIncidenceAngle'],ds['oswIncidenceAngle'].values)
+            incidence = np.array([ds['oswIncidenceAngle'].values.squeeze()])
+            #logging.debug('%s %s %s',vv,incidence.shape,coordi)
+            newds[vv] = xarray.DataArray(data=incidence,dims=dimszi,coords=coordi)
+            #logging.info('ok for incidence_readable')
         elif vv in ['satellite']:
             dimszi = ['time']
             coordi= {'time':[fdatedt]}
             satellite_int = np.array([satellite[2] == 'a']).astype(int)
             newds[vv] = xarray.DataArray(data=satellite_int,dims=dimszi,coords=coordi)
+        elif vv in ['platformName']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            satellite_int = np.array([satellite])
+            newds[vv] = xarray.DataArray(data=satellite_int,dims=dimszi,coords=coordi)
+        elif vv in ['nrcs']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            newds[vv] = xarray.DataArray(data=s0.reshape((1,)),dims=dimszi,coords=coordi)
+        elif vv in ['heading']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            newds[vv] = xarray.DataArray(data=ds['oswHeading'].values.reshape((1,)),dims=dimszi,coords=coordi)
+        elif vv in ['nv']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            newds[vv] = xarray.DataArray(data=nv.reshape((1,)),dims=dimszi,coords=coordi)
         elif vv in ['oswQualityCrossSpectraRe','oswQualityCrossSpectraIm']:
             datatmp = ds[vv].values.squeeze()
             olddims = [x for x in ds[vv].dims if x not in ['oswAzSize','oswRaSize']]
@@ -122,8 +157,12 @@ def preproc_ocn_wv(ds):
             coordi['time'] = [fdatedt]
             dimsadd = ['time']
             newds[vv] = xarray.DataArray(data=[datatmp],dims=dimsadd,coords=coordi)
-
+        #logging.debug('field xarray : %s %s',vv,newds[vv])
+    logging.debug('newds: %s',newds)
     return newds
+
+
+
 
 
 

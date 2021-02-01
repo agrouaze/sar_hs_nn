@@ -37,16 +37,16 @@ def get_fullpath_ocn_from_refdataset(inputfile,dev=False):
     logging.info('size: %s',len(paths))
     return paths,hs_ref,hs_ref_std
 
-def predict_and_save(ref_file_input,paths_ocn,outputdir,hs_ref,hs_ref_std,model,modelname):
+def predict_and_save_to_validate(ref_file_input,paths_ocn,outputdir,hs_ref,hs_ref_std,model,modelname):
     """
 
     :param ref_file_input: (str) path of the nc file containing the input SAR and output Hs+Hs_std
-    :param paths_ocn:
-    :param outputdir:
-    :param hs_ref:
-    :param hs_ref_std:
-    :param model:
-    :param modelname:
+    :param paths_ocn: list of (str)
+    :param outputdir:str
+    :param hs_ref: ndarray
+    :param hs_ref_std: ndarray
+    :param model: keras objet
+    :param modelname: str
     :return:
     """
     newpaths = []
@@ -63,6 +63,30 @@ def predict_and_save(ref_file_input,paths_ocn,outputdir,hs_ref,hs_ref_std,model,
     s1_ocn_wv_ds.to_netcdf(outputpath)
     logging.info('output : %s',outputpath)
     logging.info('finished')
+
+def predict_from_ocn(paths_ocn,outputpath,model,save=False):
+    """
+
+    :param paths_ocn:
+    :param outputpath:
+    :param model:
+    :return:
+    """
+    newpaths = []
+    for ffi,ff in enumerate(paths_ocn) :
+        if isinstance(ff,str) is False:
+            ff = ff.decode() #when path are stored as bytes
+        newpaths.append(ff)
+        logging.debug('ff: %s',ff)
+    s1_ocn_wv_ds = main_level_1(newpaths,model)
+    logging.debug('s1_ocn_wv_ds : %s',s1_ocn_wv_ds)
+    # pdb.set_trace()
+    #outputpath = os.path.join(outputdir,'Quach2020_ifr_predict_%s_%s' % (modelname,os.path.basename(ref_file_input)))
+    if save:
+        s1_ocn_wv_ds.to_netcdf(outputpath)
+        logging.info('output : %s',outputpath)
+    logging.info('finished')
+    return s1_ocn_wv_ds
 
 
 if __name__ =='__main__':
@@ -100,5 +124,5 @@ if __name__ =='__main__':
     paths_ocn,hs_ref,hs_ref_std = get_fullpath_ocn_from_refdataset(inputfile=onefile_ref,dev=args.dev)
     outputdir = '/home1/datawork/agrouaze/data/sentinel1/cwave/validation_quach2020/'
     logging.info('outputdir : %s',outputdir)
-    predict_and_save(onefile_ref,paths_ocn,outputdir,hs_ref,hs_ref_std,model=model,modelname=args.modelversion)
+    predict_and_save_to_validate(onefile_ref,paths_ocn,outputdir,hs_ref,hs_ref_std,model=model,modelname=args.modelversion)
     logging.info('end of script, elapsed: %1.1f secconds',time.time()-t0)

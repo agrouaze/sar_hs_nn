@@ -26,13 +26,18 @@ def prepare_ocn_wv_data(pattern_path):
     """
     #ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2020/129/*.SAFE/measurement/s1*nc'
     logging.info('start reading S1 WV OCN data')
-    ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
+    try:
+        ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
+    except: #for py2.7 version
+        ocn_wv_ds = xarray.open_mfdataset(pattern_path,concat_dim='time',preprocess=preproc_ocn_wv)
     logging.info('Nb pts in dataset: %s',ocn_wv_ds['todSAR'].size)
     logging.info('SAR data ready to be used')
-    cspcRe = ocn_wv_ds['oswQualityCrossSpectraRe'].values.squeeze()
-    cspcIm = ocn_wv_ds['oswQualityCrossSpectraIm'].values.squeeze()
+    cspcRe = ocn_wv_ds['oswQualityCrossSpectraRe'].values
+    cspcIm = ocn_wv_ds['oswQualityCrossSpectraIm'].values
     re = preprocess.conv_real(cspcRe)
     im = preprocess.conv_imaginary(cspcIm)
+    logging.info('re : %s',re.shape)
+    logging.info('im : %s',im.shape)
     spectrum = np.stack((re, im), axis=3)
     logging.info('spectrum shape : %s',spectrum.shape)
     return spectrum,ocn_wv_ds
@@ -140,6 +145,8 @@ def main_level_1(pattern_path,model):
     features = define_features(s1_ocn_wv_ds)
     test = define_input_test_dataset(features,spectrum)
     yhat = do_my_prediction(model,test)
-    s1_ocn_wv_ds['HsQuach'] = xarray.DataArray(data=yhat[:,0],dims=['time'])
-    s1_ocn_wv_ds['HsQuach_uncertainty'] = xarray.DataArray(data=yhat[:,1],dims=['time'])
+    #s1_ocn_wv_ds['HsQuach'] = xarray.DataArray(data=yhat[:,0],dims=['time'])
+    #s1_ocn_wv_ds['HsQuach_uncertainty'] = xarray.DataArray(data=yhat[:,1],dims=['time'])
+    s1_ocn_wv_ds['swh'] = xarray.DataArray(data=yhat[:,0],dims=['time'])
+    s1_ocn_wv_ds['swh_uncertainty'] = xarray.DataArray(data=yhat[:,1],dims=['time'])
     return s1_ocn_wv_ds

@@ -1,12 +1,16 @@
 # sar_hs_nn
-lib and bin to predict Hs and Hs_std from SAR Sentinel-1 mission in WV.
-Based on Quach 2020 model.
+With this python library you can:
+ 1) predict Hs and Hs_std from SAR Sentinel-1 mission in WV.
+ 2) compute the 20 C-WAVE params.
+ 
+Based on Quach 2020 model: https://authors.library.caltech.edu/104562/1/09143500.pdf 
+
 Ifremer implementation 2021.
 Used to produce CCI SeaState SAR product.
 
-sarhs lib is a copy paste from https://github.com/hawaii-ai/SAR-Wave-Height .
+`sarhs` lib is a copy paste from https://github.com/hawaii-ai/SAR-Wave-Height .
 
- # Installation
+ # Installation of the lib in a conda environement
 1) install `poetry` binary
  ```bash
 curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
@@ -32,7 +36,7 @@ $HOME/.poetry/bin/poetry build --format sdist && tar --wildcards -xvf dist/*.tar
 ```
 
 
-install the sarhspredictor and its dependencies
+install the `sarhspredictor` and its dependencies
 ```bash
 pip install -e .
 ```
@@ -46,7 +50,7 @@ check installation
 import sarhspredictor
 ```
 
-edit the sarhspredictor/config.py file in order to set the path of the different models .h5
+edit the `sarhspredictor/config.py` file in order to set the path of the different models .h5
 
 # usage
 to create a netCDF file containing the predictions starting from the reference inputs (J. Stopa nc file):
