@@ -179,6 +179,9 @@ def append_python_vars(ff,dev=False):
 
     tas = nci.variables['trackAngle'][:]
     incs = nci.variables['incidenceAngle'][:]
+    #if True: #test to replace the incidence angle and trackangle to see if the difference in S params is lower (Feb 2021)
+
+
     nvs = nci.variables['normalizedVariance'][:]
     sig0s = nci.variables['sigma0'][:]
     for jj in range(N_time):
@@ -193,7 +196,8 @@ def append_python_vars(ff,dev=False):
         latsar = lats[jj]
 #             ths1,ks1,ta,incidenceangle,s0,nv,cspcRe,cspcIm,datedt,lonsar,latsar,satellite 
         subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRev2,ks1,ths1,kx,ky,cspcReX_not_conservativ,S = format_input_CWAVE_vector_from_OCN(
-            cspcRe.T,cspcIm.T,ths1,ta,incidenceangle,s0,nv,ks1,datedt,lonsar,latsar,satellite)
+            cspcRe=cspcRe.T,cspcIm=cspcIm.T,ths1=ths1,ta=ta,incidenceangle=incidenceangle,s0=s0,nv=nv,ks1=ks1,
+            datedt=datedt,lonSAR=lonsar,latSAR=latsar,satellite=satellite)
         if jj==0:
             Spy = S
             big_Re_cart = cspcReX

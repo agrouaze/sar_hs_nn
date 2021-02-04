@@ -59,7 +59,7 @@ def median_fill(x, extremum=1e+15):
     Returns:
     rval: new array with extreme values filled with median.
     """
-    assert not np.any(np.isnan(x))
+    #assert not np.any(np.isnan(x)) #commented by agrouaze Feb 2021
     medians = np.median(x, axis=0)
     mask = np.abs(x) > extremum
     medians = np.repeat(medians.reshape(1,-1), x.shape[0], axis=0)

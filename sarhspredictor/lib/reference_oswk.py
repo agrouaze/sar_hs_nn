@@ -1,5 +1,5 @@
 """
-
+see apply_oswK_patch.py for usage
 """
 import numpy as np
 reference_oswK_2015 = np.array([0.006283185, 0.007090763, 0.008002136, 0.00903065, 0.01019136, 

@@ -17,6 +17,7 @@ scipy                     0.19.1
 mkl                       2019.0
 
 """
+import pdb
 import logging
 import numpy as np
 import pandas as pd
@@ -95,8 +96,8 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     date creation: 9 Juillet 2019
     :args:
         dev_plots (bool):
-        cspcRe (2D array): polSpecRe
-        cspcIm (2D array): polSpecIm
+        cspcRe (2D array): polSpecRe 60x72 (k,phi)
+        cspcIm (2D array): polSpecIm 60x72 (k,phi)
         phisar (1D array): oswPhi
         s0 (float): oswNrcs
         ks1 (float): oswK
@@ -114,9 +115,8 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     %   s1a-wv2-ocn-vv-20151130t201457-20151130t201500-008838-00c9f5-046.nc
     % hsSM=1.3282
     """
-
     t0 = time.time()
-    logging.debug('start computing hs total SAR')
+    logging.debug('start computing hs total SAR with X spectra shape %s',cspcRe.shape)
 #     % Constants for CWAVE======================================================
     NTH = 72    # % number of output wave directions on log-polar grid
     kmax=2*np.pi/60 #  % kmax for empirical Hs
@@ -177,9 +177,7 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
 #     KY = KY[indices]
     DKX = np.ones(KX.shape)*0.003513732113299
     DKY = np.ones(KX.shape)*0.002954987953815
-    
-#     % Read in L2 OCN data==================================================
-#     ks1 = osw_handler.variables['oswK'][:].squeeze()
+
     if (ks1>1000).any():
         flagKcorrupted = True
     else:
@@ -192,7 +190,13 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     ia = incidenceangle
     logging.debug('cspcRe = %s',cspcRe.shape)
     subset_ok = {}
-    if cspcRe.shape[0] == 60:
+    subset_ok['todSAR'] = _conv_time(netCDF4.date2num(datedt,'hours since 2010-01-01T00:00:00Z UTC'))
+    subset_ok['lonSAR'] = lonSAR
+    subset_ok['latSAR'] = latSAR
+    subset_ok['incidenceAngle'] = incidenceangle
+    subset_ok['sigma0'] = s0
+    subset_ok['normalizedVariance'] = nv
+    if cspcRe.shape[0] == 60 and (cspcRe>0).any():
         # Convert to kx,ky spectrum
         a1 = np.radians(ta)
         a2 = np.radians(ths1)
@@ -357,12 +361,7 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
        's8', 's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17',
        's18', 's19', 'sentinelType']
         
-        subset_ok['todSAR'] = _conv_time(netCDF4.date2num(datedt,'hours since 2010-01-01T00:00:00Z UTC'))
-        subset_ok['lonSAR'] = lonSAR
-        subset_ok['latSAR'] = latSAR
-        subset_ok['incidenceAngle'] = incidenceangle
-        subset_ok['sigma0'] = s0
-        subset_ok['normalizedVariance'] = nv
+
         for iiu in range(len(S)):
             subset_ok['s'+str(iiu)] = S[iiu][0]
         # encodes type A as 1 and B as 0
@@ -371,12 +370,19 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
         else:
             subset_ok['sentinelType'] = 0
         logging.debug('subset_ok = %s',subset_ok)
-        subset_ok = pd.DataFrame(subset_ok,index=[0])
+        try:
+            subset_ok = pd.DataFrame(subset_ok,index=[0])
+        except:
+            logging.error('impossible to convert dict subset_ok into dataframe pandas %s',traceback.format_exc())
+            logging.info('let the subset_ok as dict')
     else:
-        cspcReX = np.array([])
-        cspcImX = np.array([])
-        cspcRe = np.array([])
-        cspcReX_not_conservativ = np.array([])
+        cspcReX = np.zeros((71,85))
+        cspcImX = np.zeros((71,85))
+        cspcReX_not_conservativ = np.zeros((71,85))
+        #cspcReX = np.array([])
+        #cspcImX = np.array([])
+        #cspcRe = np.array([])
+        #cspcReX_not_conservativ = np.array([])
     logging.debug('subset_ok %s',subset_ok)
     return subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRe,ks1,ths1,kx,ky,cspcReX_not_conservativ,S#[:,idd]
 

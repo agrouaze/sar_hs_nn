@@ -26,10 +26,10 @@ def prepare_ocn_wv_data(pattern_path):
     """
     #ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2020/129/*.SAFE/measurement/s1*nc'
     logging.info('start reading S1 WV OCN data')
-    try:
-        ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
-    except: #for py2.7 version
-        ocn_wv_ds = xarray.open_mfdataset(pattern_path,concat_dim='time',preprocess=preproc_ocn_wv)
+    #try:
+    ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
+    #except: #for py2.7 version
+    #    ocn_wv_ds = xarray.open_mfdataset(pattern_path,concat_dim='time',preprocess=preproc_ocn_wv)
     logging.info('Nb pts in dataset: %s',ocn_wv_ds['todSAR'].size)
     logging.info('SAR data ready to be used')
     cspcRe = ocn_wv_ds['oswQualityCrossSpectraRe'].values
