@@ -17,7 +17,7 @@ note: cwaveV4 dataset contains spectra with dimensions 72x60 whatever the versio
  in 201507 for instance the file contains masked values, thus a patch is necessary
 
 update January 2021: preparation of traning dataset for Quach 2020 model rebuild
-env :/home1/datawork/agrouaze/conda_envs2/envs/cwave/bin/python (env used to provided the requirement.txt file)
+env :/home1/datawork/agrouaze/conda_envs2/envs/cwave/bin/python (env used to provided the requirement_light.txt file)
 
 """
 import os
