@@ -16,12 +16,17 @@ Used to produce CCI SeaState SAR product.
  ```bash
 curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
 ```
-2) create a conda env
+2) install conda
+```bash
+wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+```
+3)) create a conda env
  ```
  conda create -n sarhs python=3.7.8
  conda activate sarhs
 ```
-3) add setuptools
+4) add setuptools
  ```bash
 conda install -c anaconda setuptools
 ```
@@ -31,13 +36,13 @@ git clone https://github.com/grouny/sar_hs_nn.git
 cd sar_hs_nn
 ```
 
-4) create a setupy.py with `poetry`
+6) create a setupy.py with `poetry`
 ```bash
 $HOME/.poetry/bin/poetry build --format sdist && tar --wildcards -xvf dist/*.tar.gz -O '*/setup.py' > setup.py
 ```
 
 
-install the `sarhspredictor` and its dependencies
+7) install the `sarhspredictor` and its dependencies
 ```bash
 pip install -e .
 ```
@@ -46,12 +51,13 @@ if the previous command failed try to run the command in error by yourself. It s
 ../bin/python3.7 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'../sar_hs_nn/setup.py'"'"'; __file__='"'"'../sar_hs_nn/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' develop --no-deps
 ```
 
-check installation
+8) check installation
 ```python
 import sarhspredictor
 ```
 
-edit the `sarhspredictor/config.py` file in order to set the path of the different models .h5
+9) edit the `sarhspredictor/config.py` file
+ In this file you can set the path of the different models .h5
 
 # usage
 to predict a Hs from WV Sentinel-1 SAR Level-2 product, follow this [python notebook demo](https://github.com/grouny/sar_hs_nn/blob/main/sarhspredictor/examples/predict_Hs_using_quach2020_model_from_S1_WV_OCN_files.ipynb):
