@@ -62,6 +62,10 @@ import sarhspredictor
 # usage
 to predict a Hs from WV Sentinel-1 SAR Level-2 product, follow this [python notebook demo](https://github.com/grouny/sar_hs_nn/blob/main/sarhspredictor/examples/predict_Hs_using_quach2020_model_from_S1_WV_OCN_files.ipynb):
 
+to prepare the training dataset using the colocations files bteween S-1 and altimeters:
+```bash
+python sarhspreidctor/bin/rebuild_training_dataset.py --input /home/cercache/users/jstopa/sar/empHs/cwaveV4/S1A_ALT_coloc201501S.nc
+```
 
 to create a netCDF file containing the predictions starting from the reference inputs (J. Stopa nc file):
 ```bash
@@ -70,4 +74,32 @@ python sarhspredictor/bin/predict_with_quach2020_from_ref_input_using_keras.py -
 to create a netCDF file containing the predictions starting from ESA S-1 Level-2 WV: 
 ```bash
 python sarhspredictor/bin/predict_and_save_nc_from_OCN_using_keras_based_on_ref_listing_files.py --modelversion heteroskedastic_2017.h5
+```
+to create a netCDF file in CCI sea state format containing the Hs predicted from WV OCN files:
+
+```bash
+usage: generate_cci_sea_state_daily_nc_file.py [-h] [--verbose]
+                                               [--outputdir OUTPUTDIR]
+                                               --startdate STARTDATE
+                                               --stopdate STOPDATE --sat SAT
+                                               --wv WV [--redo]
+                                               --cwave-version CWAVE_VERSION
+                                               [--dev]
+
+hs_sar_product
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --verbose
+  --outputdir OUTPUTDIR
+                        folder where the data will be written [optional]
+  --startdate STARTDATE
+                        YYYYMMDD
+  --stopdate STOPDATE   YYYYMMDD
+  --sat SAT             S1A or S1B...
+  --wv WV               wv1 or wv2...
+  --redo                redo existing files nc
+  --cwave-version CWAVE_VERSION
+                        example v1.2
+  --dev                 dev/test mode only 2 wv measu treated in a day
 ```
