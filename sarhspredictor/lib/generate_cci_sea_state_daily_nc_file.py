@@ -8,14 +8,10 @@ example usage:
 python /home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib/generate_cci_sea_state_daily_nc_file.py --outputdir /tmp/ --startdate 20200101 --stopdate 20200101 --sat S1B --wv wv2 --redo --cwave-version v3 --dev --verbose
 """
 
-
-
 import logging
 import sys
 import xarray
 import os
-datacdir = os.path.abspath(os.path.join(os.path.dirname(__file__),'../data_collect'))
-sys.path.append(datacdir)
 import time
 import glob
 import netCDF4
