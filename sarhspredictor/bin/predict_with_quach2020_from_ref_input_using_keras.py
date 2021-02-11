@@ -13,11 +13,16 @@ import xarray
 import numpy as np
 import datetime
 import pdb
+import scipy
 #sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
 from sarhspredictor.lib.load_quach_2020_keras_model import POSSIBLES_MODELS
+
+
+
 #DIR_REF = '/home/cercache/users/jstopa/sar/empHs/forAG' #corrupted S variable
 DIR_REF = '/home1/datawork/agrouaze/data/sentinel1/cwave/reference_input_output_dataset_from_Jstopa_quach2020/' #corrected S variable in
-
+DIR_REF = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2' #je repars du dataset que jai fournis aux Hawaiiens
+#par contre est ce que ça a du sens de prendre des donnes qui ont servi pour le training? (entre 2015 et 2018)??
 import xarray
 import datetime
 import netCDF4
@@ -32,21 +37,27 @@ def preproc_ref_input(ds):
     :return:
     """
     filee = ds.encoding["source"]
-    logging.info('filee %s',os.path.basename(filee))
+    logging.debug('filee %s',os.path.basename(filee))
     fdate = ds['timeSAR'].values
     try:
         fdatedt = netCDF4.num2date(fdate,ds['timeSAR'].units)
     except:
         fdatedt = fdate
-    logging.info('fdatedt : %s',fdatedt)
+    logging.debug('fdatedt : %s',fdatedt)
 
     real_dates = []
-    filesL2 = ds['fileNameL2'].values
+    if 'fileNameL2' in ds:
+        #version stopa ref input/ouput
+        filesL2 = ds['fileNameL2'].values
+    else:
+        #version ifr training dataset
+        filesL2 = ds['fileNameFull'].values
     for tt in range(len(ds['timeSAR'])) :
         if tt % 10000 == 0 :
             print(tt,'/',len(ds['timeSAR']))
         fileL2 = filesL2[tt]
-        fileL2 = fileL2.decode()
+        if isinstance(fileL2,str) is False:
+            fileL2 = fileL2.decode()
         dt = datetime.datetime.strptime(os.path.basename(fileL2).split('-')[4],'%Y%m%dt%H%M%S')
         # print(dt)
         real_dates.append(dt)
@@ -67,8 +78,16 @@ def preproc_ref_input(ds):
     nv = ds['normalizedVariance'].values.squeeze()
     nv = nv.reshape((len(nv),1)) #to allow concatenation with 2D S variable
     s0 = s0.reshape((len(s0),1))
-    logging.info('s0: %s',s0.shape)
-    logging.info('ds[S] %s %s',ds['S'].shape,ds['S'])
+    logging.debug('s0: %s',s0.shape)
+    if 'S' in  ds:
+        varname_20CWAVEparam = 'S'
+        varstoadd = ['cwave','dxdt','latlonSARcossin','todSAR','incidence','satellite','cspcRe','cspcIm','hsNN',
+                     'hsNNSTD']
+    else:
+        varname_20CWAVEparam = 'py_S'
+        varstoadd = ['cwave','dxdt','latlonSARcossin','todSAR','incidence','satellite','cspcRe','cspcIm',
+                     'hsALT','hsALTmin','hsALTmax','hsWW3','hsSM','hsWW3v2']
+    logging.debug('ds[S] %s %s',ds[varname_20CWAVEparam].shape,ds[varname_20CWAVEparam])
     #ds['S'] = ds['S'].astype('float32',casting='unsafe')
     #nc = netCDF4.Dataset(filee) #patch because S params saved by JStopa are not readable with xarray (different dtypes)
     #S = nc.variables['S'][:,0].astype('float32')
@@ -79,7 +98,7 @@ def preproc_ref_input(ds):
     # subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRe,ks1,ths1,kx,ky,cspcReX_not_conservativ,S = compute_hs_total_SAR_v2.format_input_CWAVE_vector_from_OCN(cspcRe,
     #                                                                         cspcIm,ths1,ta,incidenceangle,s0,nv,ks1,fdate,lonSAR,latSAR,satellite)
 
-    varstoadd = ['cwave', 'dxdt', 'latlonSARcossin', 'todSAR', 'incidence', 'satellite','cspcRe','cspcIm','hsNN','hsNNSTD']
+
     #additional_vars_for_validation = ['oswLon','oswLat','oswLandFlag','oswIncidenceAngle']
     #varstoadd += additional_vars_for_validation
     newds['timeSAR'] = xarray.DataArray(fdate,dims=['time'],coords={'time':fdate})
@@ -89,21 +108,21 @@ def preproc_ref_input(ds):
         satellite = 0
     else:
         satellite = 1
-    logging.info('newds with only time: %s',newds)
+    logging.debug('newds with only time: %s',newds)
     for vv in varstoadd:
-        logging.info('vv : %s',vv)
+        logging.debug('vv : %s',vv)
         if vv in ['cwave']:
             dimszi = ['time','cwavedim']
             coordi= {'time':fdate,'cwavedim':np.arange(22)}
             #tmptmp = ds['S'].astype('float32',casting='unsafe').values[:,1]
-            tmptmp = ds['S'].values
-            logging.info('tmptmp : %s %s %s',tmptmp.shape,type(tmptmp),tmptmp.dtype)
-            logging.info('s0 %s',s0.shape)
-            logging.info('nV : %s',nv.shape)
+            tmptmp = ds[varname_20CWAVEparam].values
+            logging.debug('tmptmp : %s %s %s',tmptmp.shape,type(tmptmp),tmptmp.dtype)
+            logging.debug('s0 %s',s0.shape)
+            logging.debug('nV : %s',nv.shape)
             cwave = np.hstack([tmptmp, s0, nv]) #found L77 in preprocess.py
-            logging.info('cwave : %s',cwave.shape)
+            logging.debug('cwave : %s',cwave.shape)
             cwave = preprocess.conv_cwave(cwave)
-            logging.info('cwave after normalization : %s,%s',cwave.shape,type(cwave))
+            logging.debug('cwave after normalization : %s,%s',cwave.shape,type(cwave))
             newds[vv] = xarray.DataArray(cwave,coords=coordi,dims=dimszi)
         elif vv in ['dxdt']: #dx and dt and delta from coloc with alti see /home/cercache/users/jstopa/sar/empHs/cwaveV5, I can put zeros here at this stage
             #dx = preprocess.conv_dx(fs['dx'][indices])
@@ -113,7 +132,7 @@ def preproc_ref_input(ds):
             dx = np.zeros(len(fdate))
             dt = np.zeros(len(fdate))
             dxdt = np.column_stack([dx, dt])
-            logging.info('dxdt: %s %s',dxdt.shape,dxdt)
+            logging.debug('dxdt: %s %s',dxdt.shape,dxdt)
             dimszi = ['time','dxdtdim']
             coordi= {'time':fdate,'dxdtdim':np.arange(2)}
             #print('dxdt')
@@ -129,7 +148,7 @@ def preproc_ref_input(ds):
             dimszi = ['time']
             coordi= {'time':fdate}
             todSAR = preprocess.conv_time(fdate)
-            logging.info('todSAR : %s',todSAR)
+            logging.debug('todSAR : %s',todSAR)
             newds[vv] = xarray.DataArray(data=todSAR,dims=dimszi,coords=coordi)
         elif vv in ['incidence',]:
             dimszi = ['time','incdim']
@@ -142,11 +161,11 @@ def preproc_ref_input(ds):
             #satellite_int = np.array([satellite[2] == 'a']).astype(int)
             #satellite_int = np.repeat(satellite_int,len(fdate))
             satellite_int = np.ones((ds['timeSAR'].shape[0], ), dtype=float) * satellite
-            logging.info('satellite_int = %s',satellite_int.shape)
+            logging.debug('satellite_int = %s',satellite_int.shape)
             newds[vv] = xarray.DataArray(data=satellite_int,dims=dimszi,coords=coordi)
         elif vv in ['cspcRe','cspcIm']:
             datatmp = ds[vv].values.squeeze()
-            logging.info('vv: %s shape : %s',vv,datatmp.shape)
+            logging.debug('vv: %s shape : %s',vv,datatmp.shape)
             olddims = [x for x in ds[vv].dims if x not in ['oswAzSize','oswRaSize']]
             coordi = {}
             for didi in olddims:
@@ -176,7 +195,10 @@ def read_input_files(single_input_ref_file):
     logging.info('arbitrary chosen input ref file : %s',single_input_ref_file)
     dsref0 = xarray.open_mfdataset(single_input_ref_file,preprocess=preproc_ref_input,decode_times=False)
     #pdb.set_trace()
-    dsref = dsref0.where(dsref0['timeSARdt']<np.datetime64('2019-06-02'),drop=True) #for test I only take the first day
+    #dsref = dsref0.where(dsref0['timeSARdt']<np.datetime64('2019-06-02'),drop=True) #for test I only take the first day
+    #dsref = dsref0.where(dsref0['timeSARdt'] < np.datetime64('2018-01-02'),
+    #                     drop=True)  # for test I only take the first day
+    dsref = dsref0
     #pdb.set_trace()
     #dsref = dsref0.where(dsref0['timeSARdt']<datetime.datetime(2019,1,2),drop=True)
     logging.info('timeSAR : %s',dsref['timeSAR'].size)
@@ -185,7 +207,7 @@ def read_input_files(single_input_ref_file):
     re = preprocess.conv_real(cspcRe)
     im = preprocess.conv_imaginary(cspcIm)
     spectrum = np.stack((re,im),axis=3)
-    logging.info('spectrum shape : %s',spectrum.shape)
+    logging.debug('spectrum shape : %s',spectrum.shape)
     return spectrum,dsref
 
 def define_features(ds):
@@ -216,7 +238,7 @@ def define_input_test_dataset(features,spectrum):
     outputs = np.zeros(features.shape[0])
     inputs = [spectrum,features]
     test = (inputs,outputs)
-    logging.info('test dataset ready')
+    logging.debug('test dataset ready')
     return test
 
 def predict ( model,dataset ) :
@@ -229,8 +251,8 @@ def predict ( model,dataset ) :
     ys,yhats = [],[]
     for batch in dataset :
         inputs,y = batch
-        print('inputs',type(inputs))
-        print('y',y)
+        #print('inputs',type(inputs))
+        #print('y',y)
         yhat = model.predict_on_batch(inputs)
         if y is not None :
             y = y.reshape(-1,2)
@@ -352,7 +374,8 @@ if __name__ =='__main__':
     print('ok')
     logging.info('start prediction with model : %s',args.modelversion)
     logging.info('done')
-    one_file = os.path.join(DIR_REF,'S1A_201901S.nc')
+    #one_file = os.path.join(DIR_REF,'S1A_201901S.nc')#
+    one_file = os.path.join(DIR_REF,'S1A_ALT_coloc201801S.nc')
     spectrum,ref_ds = read_input_files(one_file)
     logging.info('preprocessing done')
     try :
@@ -363,7 +386,7 @@ if __name__ =='__main__':
         print('second try to  load_quach2020_model (except)')#the second try his here because the loading with justin_std have a problem of layer naming solved by two consecutive call
         MODEL = choose_model(args)
     output_prediction,featuresArray =  main_level_0(MODEL,ref_ds,spectrum)
-    outputdir = '/home1/datawork/agrouaze/data/sentinel1/cwave/validation_quach2020/'
+    outputdir = '/home1/datawork/agrouaze/data/sentinel1/cwave/validation_quach2020/heteroskedastic2017_version_4feb2021/'
     logging.info('outputdir : %s',outputdir)
     predict_and_save(ref_ds,outputdir,hs_ref=output_prediction['HsQuach'],
                      hs_ref_std=output_prediction['HsQuach_uncertainty'],input_ref_file=one_file,

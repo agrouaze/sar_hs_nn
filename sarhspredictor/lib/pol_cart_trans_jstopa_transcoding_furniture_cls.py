@@ -13,7 +13,7 @@ import copy
 
 def pol_cart_trans(d,k,t,x,y,name='re',interpmethod='cubic'):
     """
-    % Justin Stopa 09/006/2016
+    % original matlab code: Justin Stopa 09/06/2016
     %
     % Purpose:
     %   convert k,t spectrum into cartesian
@@ -24,6 +24,10 @@ def pol_cart_trans(d,k,t,x,y,name='re',interpmethod='cubic'):
     % t   - theta direction in radians
     % x   - transform spc into cartesian with these x wavenumbers (output grid)
     % y   - transform spc into cartesian with these y wavenumbers (output grid)
+
+    Ouputs:
+        D: 71*85 nd array matrix: cartesian cross spectra
+        Dbefore: 71*85 nd array matrix: cartesian cross spectra without energy normalization (conversation)
     """
     d = d.astype(np.float64)
     logging.debug('pol_cart_trans | d=%s',d.shape)

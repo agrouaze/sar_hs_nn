@@ -18,25 +18,25 @@ def from_np64_to_dt(dt64):
     ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
     return datetime.datetime.utcfromtimestamp(ts)
 
-def prepare_training_dataset(pattern_path):
+def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
     """
-    read training dataset and normalize the variable needed by the model
-    :param pattern_path: could also be a list of path
+    this method I used for building training dataset and also to do the validation dataset
+    :param ds_train_raw:
     :return:
     """
-    #ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2020/129/*.SAFE/measurement/s1*nc'
-    logging.info('start reading training dataset')
-    #try:
-    #ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
-    ds_train_raw = xarray.open_dataset(pattern_path)
-    #except: #for py2.7 version
+    # except: #for py2.7 version
     #    ocn_wv_ds = xarray.open_mfdataset(pattern_path,concat_dim='time',preprocess=preproc_ocn_wv)
     logging.info('Nb pts in dataset: %s',ds_train_raw['timeSAR'].size)
     varstoadd = ['S','cwave','dxdt','latlonSARcossin','todSAR',
                  'incidence','satellite','oswQualityCrossSpectraRe','oswQualityCrossSpectraIm']
-    #additional_vars_for_validation = ['oswLon','oswLat','oswLandFlag','oswIncidenceAngle','oswWindSpeed','platformName',
+    # additional_vars_for_validation = ['oswLon','oswLat','oswLandFlag','oswIncidenceAngle','oswWindSpeed','platformName',
     #                                  'nrcs','nv','heading','oswK','oswNrcs']
-    #varstoadd += additional_vars_for_validation
+    # varstoadd += additional_vars_for_validation
+    if validation_dataset:
+        varstoadd.append('py_cspcImX')
+        varstoadd.append('py_cspcReX')
+    if 'hsSM' in ds_train_raw:
+        varstoadd += ['hsSM']
     S = ds_train_raw['py_S'].values
     s0 = ds_train_raw['sigma0']
     nv = ds_train_raw['normalizedVariance'].values
@@ -44,13 +44,18 @@ def prepare_training_dataset(pattern_path):
     timeSAR_vals = ds_train_raw['timeSAR'].values
     ths1 = ds_train_raw['th'].values
     ks1 = ds_train_raw['k'].values
-    fpaths = ds_train_raw['fileNameFull'].values
-    sattelites = np.array([os.path.basename(hhy)[0:3] for hhy in fpaths])
-    satellites_int = np.array([threelettersat[2]=='a' for threelettersat in sattelites]).astype(int)
+    if 'fileNameFull' in ds_train_raw:
+        fpaths = ds_train_raw['fileNameFull'].values
+        #varstoadd.append('fileNameFull')
+    else:
+        fpaths = ds_train_raw['fileNameL2'].values # 2019 dataset is a bt different
+        #varstoadd.append('fileNameL2')
+    sattelites = np.array([os.path.basename(hhy)[0 :3] for hhy in fpaths])
+    satellites_int = np.array([threelettersat[2] == 'a' for threelettersat in sattelites]).astype(int)
     cspcRe = ds_train_raw['cspcRe'].values
     cspcIm = ds_train_raw['cspcIm'].values
     for vv in varstoadd :
-        logging.debug('start format variable :%s',vv)
+        logging.info('start format variable :%s',vv)
         if vv in ['cwave'] :
             dimszi = ['time','cwavedim']
             coordi = {'time' : timeSAR_vals,'cwavedim' : np.arange(22)}
@@ -59,12 +64,16 @@ def prepare_training_dataset(pattern_path):
             logging.debug('cwave vals: %s',cwave.shape)
             cwave = preprocess.conv_cwave(cwave)
             ds_training_normalized[vv] = xarray.DataArray(data=cwave,dims=dimszi,coords=coordi)
+        elif vv in ['fileNameFull','fileNameL2']:
+            dimszi = ['time','pathnchar']
+            coordi = {'time' : timeSAR_vals,'pathnchar' : len(fpaths[0])}
+            ds_training_normalized[vv] = xarray.DataArray(data=fpaths,dims=dimszi,coords=coordi)
         elif vv == 'S' :  # to ease the comparison with Justin files
             dimszi = ['time','Sdim']
             coordi = {'time' : timeSAR_vals,'Sdim' : np.arange(20)}
             ds_training_normalized[vv] = xarray.DataArray(data=S,dims=dimszi,coords=coordi)
         elif vv in ['dxdt'] :  # dx and dt and delta from coloc with alti see /home/cercache/users/jstopa/sar/empHs/cwaveV5, I can put zeros here at this stage
-            dxdt = np.column_stack([ds_train_raw['dx'].values,ds_train_raw['dt'].values])
+            #dxdt = np.column_stack([ds_train_raw['dx'].values,ds_train_raw['dt'].values])
             dxdt = np.column_stack([np.zeros(s0.shape),np.ones(s0.shape)])
             dimszi = ['time','dxdtdim']
             coordi = {'time' : timeSAR_vals,'dxdtdim' : np.arange(2)}
@@ -79,7 +88,7 @@ def prepare_training_dataset(pattern_path):
         elif vv in ['todSAR'] :
             dimszi = ['time']
             new_dates_dt = np.array([from_np64_to_dt(dt64) for dt64 in timeSAR_vals])
-            unit = "hours since 2010-01-01T00:00:00Z UTC" #see https://github.com/grouny/sar_hs_nn/blob/c05322e6635c6d77409e36537d7c3b58788e7322/sarhspredictor/lib/sarhs/preprocess.py#L11
+            unit = "hours since 2010-01-01T00:00:00Z UTC"  # see https://github.com/grouny/sar_hs_nn/blob/c05322e6635c6d77409e36537d7c3b58788e7322/sarhspredictor/lib/sarhs/preprocess.py#L11
             new_dates_num = np.array([netCDF4.date2num(dfg,unit) for dfg in new_dates_dt])
             coordi = {'time' : timeSAR_vals}
             todSAR = conv_time(new_dates_num)
@@ -105,7 +114,7 @@ def prepare_training_dataset(pattern_path):
         elif vv in ['satellite'] :
             dimszi = ['time']
             coordi = {'time' : timeSAR_vals}
-            #satellite_int = np.array([satellite[2] == 'a']).astype(int)
+            # satellite_int = np.array([satellite[2] == 'a']).astype(int)
             ds_training_normalized[vv] = xarray.DataArray(data=satellites_int,dims=dimszi,coords=coordi)
         elif vv in ['platformName'] :
             dimszi = ['time']
@@ -119,7 +128,8 @@ def prepare_training_dataset(pattern_path):
         elif vv in ['heading'] :
             dimszi = ['time']
             coordi = {'time' : timeSAR_vals}
-            ds_training_normalized[vv] = xarray.DataArray(data=ds_train_raw['trackAngle'].values,dims=dimszi,coords=coordi)
+            ds_training_normalized[vv] = xarray.DataArray(data=ds_train_raw['trackAngle'].values,dims=dimszi,
+                                                          coords=coordi)
         elif vv in ['nv'] :
             dimszi = ['time']
             coordi = {'time' : timeSAR_vals}
@@ -140,9 +150,15 @@ def prepare_training_dataset(pattern_path):
             coordi['oswAngularBinSize'] = np.arange(len(ths1))
             coordi['oswWavenumberBinSize'] = np.arange(len(ks1))
             dimsadd = ['time','oswAngularBinSize','oswWavenumberBinSize']
-            #if datatmp.shape == (72,60) :  # case only one spectra
+            # if datatmp.shape == (72,60) :  # case only one spectra
             #    datatmp = datatmp.reshape((1,72,60))
 
+            ds_training_normalized[vv] = xarray.DataArray(data=datatmp,dims=dimsadd,coords=coordi)
+        elif vv in ['py_cspcImX','py_cspcReX'] :
+            datatmp = ds_train_raw[vv].values
+            coordi = ds_train_raw[vv].coords
+            coordi['time'] = timeSAR_vals
+            dimsadd = ds_train_raw[vv].dims
             ds_training_normalized[vv] = xarray.DataArray(data=datatmp,dims=dimsadd,coords=coordi)
         else :
             datatmp = ds_train_raw[vv].values.squeeze()
@@ -152,19 +168,34 @@ def prepare_training_dataset(pattern_path):
                 coordi[didi] = ds_train_raw[vv].coords[didi].values
             coordi['time'] = timeSAR_vals
             dimsadd = ['time']
-            ds_training_normalized[vv] = xarray.DataArray(data=[datatmp],dims=dimsadd,coords=coordi)
+            logging.info('data: %s',datatmp.shape)
+            ds_training_normalized[vv] = xarray.DataArray(data=datatmp,dims=dimsadd,coords=coordi)
         # logging.debug('field xarray : %s %s',vv,newds[vv])
     logging.debug('newds: %s',ds_training_normalized)
     logging.info('SAR data ready to be used')
-    #cspcRe = ds_train_raw['oswQualityCrossSpectraRe'].values
-    #cspcIm = ds_train_raw['oswQualityCrossSpectraIm'].values
+    # cspcRe = ds_train_raw['oswQualityCrossSpectraRe'].values
+    # cspcIm = ds_train_raw['oswQualityCrossSpectraIm'].values
     re = preprocess.conv_real(cspcRe)
     im = preprocess.conv_imaginary(cspcIm)
     logging.info('re : %s',re.shape)
     logging.info('im : %s',im.shape)
-    spectrum = np.stack((re, im), axis=3)
+    spectrum = np.stack((re,im),axis=3)
     logging.info('spectrum shape : %s',spectrum.shape)
     return spectrum,ds_training_normalized
+
+def prepare_training_dataset(pattern_path):
+    """
+    read training dataset and normalize the variable needed by the model
+    :param pattern_path: could also be a list of path
+    :return:
+    """
+    #ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2020/129/*.SAFE/measurement/s1*nc'
+    logging.info('start reading training dataset')
+    #try:
+    #ocn_wv_ds = xarray.open_mfdataset(pattern_path,combine='by_coords',concat_dim='time',preprocess=preproc_ocn_wv)
+    ds_train_raw = xarray.open_dataset(pattern_path)
+    spectrum_x,ds_training_normalized_x = prepare_training_dataset_core(ds_train_raw)
+    return spectrum_x,ds_training_normalized_x
 
 def compute_prediction_from_training_inputs(ds_training,spectrum,model):
     features = define_features(ds_training)
