@@ -28,8 +28,7 @@ from shared_information import PROJECT_DIR_DATARMOR,sats_acro,DIR_HS_EMP_CWAVE_C
 from produce_list_file_S1 import writeTheFileList
 from sarhspredictor.lib.predict_with_quach2020_on_OCN_using_keras import main_level_1
 from sarhspredictor.lib.load_quach_2020_keras_model import load_quach2020_model_v2
-sys.path.append('/home1/datahome/agrouaze/sources/test_openstreetmap_landmask/')
-import swiml2sproc_utils_ancillary_landmask
+from coastaux.lib import swiml2sproc_utils_ancillary_landmask
 #from cerbere.datamodel.trajectory import Trajectory
 #from cerbere.datamodel.field import Field
 #from cerbere.datamodel.variable import Variable
@@ -40,8 +39,7 @@ import swiml2sproc_utils_ancillary_landmask
 #from compute_hs_total_SAR_v2 import format_input_CWAVE_vector_from_OCN,compute_hs_total_SAR_v2,compute_hs_total_SAR_v2_1
 
 # import landmask
-land_polygon_path = '/home/datawork-cersat-exp/ipf/static/landmask/land_polygons'
-land_raster_path = '/home/datawork-cersat-exp/ipf/static/landmask/land_raster.nc'
+from sarhspredictor.config import land_polygon_path,land_raster_path
 
 INPUT_TXT_DIR = '/home1/scratch/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
 INPUT_TXT_DIR = '/home1/datahome/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
@@ -108,7 +106,6 @@ def read_infos_from_WV_ifremer_archive_v2 ( datedt,sato,wv,dev=False ) :
         measu_list = measu_list[0:2]
     logging.info('Nb ocn files to read: %s',len(measu_list))
     s1_ocn_wv_ds = main_level_1(measu_list[: :-1],model)
-    #TODO add distance to coast and land flag with open street map, see swiml2sproc_utils_ancillary_landmask.py function get_landmask()
     return s1_ocn_wv_ds
 
 
