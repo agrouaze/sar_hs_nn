@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup
+import setuptools
 
+setuptools.setup(setup_requires=['pbr'], pbr=True)
 packages = \
 ['sarhspredictor',
  'sarhspredictor.bin',
@@ -46,5 +48,13 @@ setup_kwargs = {
     'python_requires': '>=3.7,<4',
 }
 
+# classifier =
+#     Development Status :: 4 - Beta
+#     Environment :: Console
+#     Intended Audience :: Developers
+#     Intended Audience :: Information Technology
+#     License :: OSI Approved :: Apache Software License
+#     Operating System :: OS Independent
+#     Programming Language :: Python
 
 setup(**setup_kwargs)
