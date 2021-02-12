@@ -2,6 +2,8 @@
 Feb 2021
 A. Grouazel
 script to validate that I can get same Hs and Hs STD from OCN file sand training dataset (using the same model)
+env: cwave
+!! WARNING !! this script (in particular keras) needs quite huge memory allocation: 40Go seems enough for monthly S1 WV data
 """
 import os
 import logging
@@ -10,6 +12,7 @@ import xarray
 import netCDF4
 import pdb
 import datetime
+import glob
 from sarhspredictor.lib.load_quach_2020_keras_model import load_quach2020_model_v2
 from sarhspredictor.lib.sarhs import preprocess
 from sarhspredictor.lib.sarhs.preprocess import conv_time
@@ -35,13 +38,16 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
     if validation_dataset:
         varstoadd.append('py_cspcImX')
         varstoadd.append('py_cspcReX')
+        varstoadd.append('fileNameL2')
     if 'hsSM' in ds_train_raw:
         varstoadd += ['hsSM']
     S = ds_train_raw['py_S'].values
     s0 = ds_train_raw['sigma0']
     nv = ds_train_raw['normalizedVariance'].values
     ds_training_normalized = xarray.Dataset()
-    timeSAR_vals = ds_train_raw['timeSAR'].values
+    timeSAR_vals = ds_train_raw['timeSAR'].values # hours since ....
+    #apath = ('').join([ddc.decode() for ddc in filenames_L2[iiu,:]])
+    timeSAR_seconds = np.array([datetime.datetime.strptime(os.path.basename(fup.decode()).split('-')[4],'%Y%m%dt%H%M%S') for fup in ds_train_raw['fileNameL2'].values])
     ths1 = ds_train_raw['th'].values
     ks1 = ds_train_raw['k'].values
     if 'fileNameFull' in ds_train_raw:
@@ -58,48 +64,50 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
         logging.info('start format variable :%s',vv)
         if vv in ['cwave'] :
             dimszi = ['time','cwavedim']
-            coordi = {'time' : timeSAR_vals,'cwavedim' : np.arange(22)}
+            coordi = {'time' : timeSAR_seconds,'cwavedim' : np.arange(22)}
             logging.debug('S %s s0: %s nv: %s',S.shape,s0.shape,nv.shape)
             cwave = np.vstack([S.T,s0,nv]).T  # found L77 in preprocess.py
             logging.debug('cwave vals: %s',cwave.shape)
             cwave = preprocess.conv_cwave(cwave)
             ds_training_normalized[vv] = xarray.DataArray(data=cwave,dims=dimszi,coords=coordi)
         elif vv in ['fileNameFull','fileNameL2']:
-            dimszi = ['time','pathnchar']
-            coordi = {'time' : timeSAR_vals,'pathnchar' : len(fpaths[0])}
+            # dimszi = ['time','pathnchar']
+            # coordi = {'time' : timeSAR_seconds,'pathnchar' : len(fpaths[0])}
+            dimszi = ['time']
+            coordi = {'time' : timeSAR_seconds}
             ds_training_normalized[vv] = xarray.DataArray(data=fpaths,dims=dimszi,coords=coordi)
         elif vv == 'S' :  # to ease the comparison with Justin files
             dimszi = ['time','Sdim']
-            coordi = {'time' : timeSAR_vals,'Sdim' : np.arange(20)}
+            coordi = {'time' : timeSAR_seconds,'Sdim' : np.arange(20)}
             ds_training_normalized[vv] = xarray.DataArray(data=S,dims=dimszi,coords=coordi)
         elif vv in ['dxdt'] :  # dx and dt and delta from coloc with alti see /home/cercache/users/jstopa/sar/empHs/cwaveV5, I can put zeros here at this stage
             #dxdt = np.column_stack([ds_train_raw['dx'].values,ds_train_raw['dt'].values])
             dxdt = np.column_stack([np.zeros(s0.shape),np.ones(s0.shape)])
             dimszi = ['time','dxdtdim']
-            coordi = {'time' : timeSAR_vals,'dxdtdim' : np.arange(2)}
+            coordi = {'time' : timeSAR_seconds,'dxdtdim' : np.arange(2)}
             ds_training_normalized[vv] = xarray.DataArray(data=dxdt,dims=dimszi,coords=coordi)
         elif vv in ['latlonSARcossin'] :
             latSARcossin = preprocess.conv_position(ds_train_raw['latSAR'].values)  # Gets cos and sin
             lonSARcossin = preprocess.conv_position(ds_train_raw['lonSAR'].values)
             latlonSARcossin = np.hstack([latSARcossin,lonSARcossin])
             dimszi = ['time','latlondim']
-            coordi = {'time' : timeSAR_vals,'latlondim' : np.arange(4)}
+            coordi = {'time' : timeSAR_seconds,'latlondim' : np.arange(4)}
             ds_training_normalized[vv] = xarray.DataArray(data=latlonSARcossin,dims=dimszi,coords=coordi)
         elif vv in ['todSAR'] :
             dimszi = ['time']
             new_dates_dt = np.array([from_np64_to_dt(dt64) for dt64 in timeSAR_vals])
             unit = "hours since 2010-01-01T00:00:00Z UTC"  # see https://github.com/grouny/sar_hs_nn/blob/c05322e6635c6d77409e36537d7c3b58788e7322/sarhspredictor/lib/sarhs/preprocess.py#L11
             new_dates_num = np.array([netCDF4.date2num(dfg,unit) for dfg in new_dates_dt])
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             todSAR = conv_time(new_dates_num)
             ds_training_normalized[vv] = xarray.DataArray(data=todSAR,dims=dimszi,coords=coordi)
         elif vv in ['oswK'] :
             dimszi = ['time','oswWavenumberBinSize']
-            coordi = {'time' : timeSAR_vals,'oswWavenumberBinSize' : np.arange(len(ks1))}
+            coordi = {'time' : timeSAR_seconds,'oswWavenumberBinSize' : np.arange(len(ks1))}
             ds_training_normalized[vv] = xarray.DataArray(data=ks1,dims=dimszi,coords=coordi)
         elif vv in ['incidence',] :
             dimszi = ['time','incdim']
-            coordi = {'time' : timeSAR_vals,'incdim' : np.arange(2)}
+            coordi = {'time' : timeSAR_seconds,'incdim' : np.arange(2)}
             incidence = preprocess.conv_incidence(ds_train_raw['incidenceAngle'].values.squeeze())
             ds_training_normalized[vv] = xarray.DataArray(data=incidence,dims=dimszi,coords=coordi)
         elif vv in ['incidence_angle'] :
@@ -108,31 +116,31 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
             coordi = {}
             for didi in olddims :
                 coordi[didi] = ds_train_raw['incidenceAngle'].coords[didi].values
-            coordi['time'] = timeSAR_vals
+            coordi['time'] = timeSAR_seconds
             incidence = np.array([ds_train_raw['incidenceAngle'].values.squeeze()])
             ds_training_normalized[vv] = xarray.DataArray(data=incidence,dims=dimszi,coords=coordi)
         elif vv in ['satellite'] :
             dimszi = ['time']
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             # satellite_int = np.array([satellite[2] == 'a']).astype(int)
             ds_training_normalized[vv] = xarray.DataArray(data=satellites_int,dims=dimszi,coords=coordi)
         elif vv in ['platformName'] :
             dimszi = ['time']
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             satellite_int = sattelites
             ds_training_normalized[vv] = xarray.DataArray(data=satellite_int,dims=dimszi,coords=coordi)
         elif vv in ['nrcs'] :
             dimszi = ['time']
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             ds_training_normalized[vv] = xarray.DataArray(data=s0,dims=dimszi,coords=coordi)
         elif vv in ['heading'] :
             dimszi = ['time']
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             ds_training_normalized[vv] = xarray.DataArray(data=ds_train_raw['trackAngle'].values,dims=dimszi,
                                                           coords=coordi)
         elif vv in ['nv'] :
             dimszi = ['time']
-            coordi = {'time' : timeSAR_vals}
+            coordi = {'time' : timeSAR_seconds}
             ds_training_normalized[vv] = xarray.DataArray(data=nv,dims=dimszi,coords=coordi)
         elif vv in ['oswQualityCrossSpectraRe','oswQualityCrossSpectraIm'] :
             if vv == 'oswQualityCrossSpectraRe' :
@@ -146,7 +154,7 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
             coordi = {}
             # for didi in olddims:
             #    coordi[didi] = ds[vv].coords[didi].values
-            coordi['time'] = timeSAR_vals
+            coordi['time'] = timeSAR_seconds
             coordi['oswAngularBinSize'] = np.arange(len(ths1))
             coordi['oswWavenumberBinSize'] = np.arange(len(ks1))
             dimsadd = ['time','oswAngularBinSize','oswWavenumberBinSize']
@@ -157,7 +165,7 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
         elif vv in ['py_cspcImX','py_cspcReX'] :
             datatmp = ds_train_raw[vv].values
             coordi = ds_train_raw[vv].coords
-            coordi['time'] = timeSAR_vals
+            coordi['time'] = timeSAR_seconds
             dimsadd = ds_train_raw[vv].dims
             ds_training_normalized[vv] = xarray.DataArray(data=datatmp,dims=dimsadd,coords=coordi)
         else :
@@ -166,7 +174,7 @@ def prepare_training_dataset_core(ds_train_raw,validation_dataset=False):
             coordi = {}
             for didi in olddims :
                 coordi[didi] = ds_train_raw[vv].coords[didi].values
-            coordi['time'] = timeSAR_vals
+            coordi['time'] = timeSAR_seconds
             dimsadd = ['time']
             logging.info('data: %s',datatmp.shape)
             ds_training_normalized[vv] = xarray.DataArray(data=datatmp,dims=dimsadd,coords=coordi)
@@ -214,7 +222,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='predict from training for validation')
     parser.add_argument('--verbose',action='store_true',default=False)
-
+    parser.add_argument('--redo',action='store_true',default=False,
+                        help='activate overwritting of existing output netCDF default is False (ie keep existing)',required=False)
+    parser.add_argument('--input',action='store',required=False,default=None,help='input monthly nc file (ifr training dataset) to treat ')
+    parser.add_argument('--outputdir',help='output directory where the netcdf containing Hs predicted will be stored [default is /tmp/]',default='/tmp',required=False)
     args = parser.parse_args()
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
     if args.verbose :
@@ -223,11 +234,37 @@ if __name__ == '__main__':
     else :
         logging.basicConfig(level=logging.INFO,format=fmt,
                             datefmt='%d/%m/%Y %H:%M:%S')
-    pattern_path = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2/S1A_ALT_coloc201501S.nc'
-    pattern_path = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2/S1A_ALT_coloc201506S.nc'
-    spectrum,ds_train_norm = prepare_training_dataset(pattern_path)
+    #pattern_path = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2/S1A_ALT_coloc201501S.nc'
+    #pattern_path = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2/S1A_ALT_coloc201506S.nc'
+    if args.input is not None:
+        spectrum,ds_train_norm = prepare_training_dataset(args.input)
+        # output dir used to provided data on 2018 Jan - Jul to Justin:
+        # /home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/predictions/from_training_ds/
 
+        heteroskedastic_2017 = load_quach2020_model_v2()
+        ds_train_with_swh = compute_prediction_from_training_inputs(ds_train_norm,spectrum,heteroskedastic_2017)
+        logging.info('ds_training swh: %sm std:%s',ds_train_with_swh['swh'].values,ds_train_with_swh['swh_uncertainty'].values)
+        output_file = os.path.join(args.outputdir,'ifr_hs_predictions_quach2020_'+os.path.basename(args.input))
+        ds_train_with_swh.to_netcdf(output_file)
+        logging.info('output file : %s',output_file)
+    else:
+        heteroskedastic_2017 = load_quach2020_model_v2()
+        logging.info('no specific input file -> treat sequentially the files in 2018')
+        INPUT_DIR = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python_v2/' #S1A_ALT_coloc201802S.nc
+        logging.info('input dir : %s',INPUT_DIR)
+        list_files = sorted(glob.glob(os.path.join(INPUT_DIR,'S1*_ALT_coloc2018*S.nc')))
+        logging.info('nb files to treat : %s',len(list_files))
+        for fi,ff in enumerate(list_files):
+            output_file = os.path.join(args.outputdir,'ifr_hs_predictions_quach2020_' + os.path.basename(ff))
+            logging.info('%s/%s %s',fi,len(list_files),os.path.basename(ff))
+            if os.path.exists(output_file) and args.redo==False:
+                logging.info('output  %s already exist',output_file)
+            else:
+                spectrum,ds_train_norm = prepare_training_dataset(ff)
+                ds_train_with_swh = compute_prediction_from_training_inputs(ds_train_norm,spectrum,heteroskedastic_2017)
+                logging.info('ds_training swh: %sm std:%s',ds_train_with_swh['swh'].values,
+                             ds_train_with_swh['swh_uncertainty'].values)
 
-    heteroskedastic_2017 = load_quach2020_model_v2()
-    ds_train_with_swh = compute_prediction_from_training_inputs(ds_train_norm,spectrum,heteroskedastic_2017)
-    logging.info('ds_training swh: %sm std:%s',ds_train_with_swh['swh'].values,ds_train_with_swh['swh_uncertainty'].values)
+                ds_train_with_swh.to_netcdf(output_file)
+                logging.info('output file : %s',output_file)
+    logging.info('end of script')

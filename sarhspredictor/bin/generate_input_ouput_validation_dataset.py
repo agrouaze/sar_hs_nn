@@ -36,6 +36,7 @@ pyv = sys.version_info
 #OUTPUTDIR = '/home1/datawork/agrouaze/data/sentinel1/cwave/validation_quach2020/heteroskedastic2017_version_4feb2021/'
 OUTPUTDIR_TMP = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/input_output/tmp'
 OUTPUTDIR_FINAL = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/input_output/final'
+OUTPUTDIR_FINAL = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/input_output/final2' #fix times (xarray issue + add filenames)
 INPUT_JUSTIN = '/home/cercache/users/jstopa/sar/empHs/cwaveV6' #v6 contains year 2019 out of training dataset
 INPUT_JUSTIN = '/home1/datawork/agrouaze/data/sentinel1/cwave/reference_input_output_dataset_from_Jstopa_quach2020' #this dataset is the same but with S fixed... there should be not difference at all because S is compute here on the fly
 
@@ -369,7 +370,11 @@ def get_input_output ( satellite,datedaydt,model,dev=False ,redo=False) :
                          '%s_%s_ifr_tmp_input_output_quach2020_python.nc' % (satellite,datedaydt.strftime('%Y%m%d')))
     #dirname_inp = os.path.dirname(ffout)
     #dirname_out = os.path.join(dirname_inp,'final')
-    final_output = os.path.join(OUTPUTDIR_FINAL,os.path.basename(ffout).replace('.nc','v2.nc'))
+    if dev is True:
+        logging.info('outputdir is scratch')
+        final_output = os.path.join('/home1/scratch/agrouaze/',os.path.basename(ffout).replace('.nc','v2.nc'))
+    else:
+        final_output = os.path.join(OUTPUTDIR_FINAL,os.path.basename(ffout).replace('.nc','v2.nc'))
     if os.path.exists(final_output) and redo==False:
         logging.info('output final %s already exists and redo = False',final_output)
     else:
@@ -377,7 +382,7 @@ def get_input_output ( satellite,datedaydt,model,dev=False ,redo=False) :
         #ds_train_raw,ffpathout = append_python_vars_ds2019(inputfile,dev)
         spectrum_x,ds_training_normalized_x = prepare_training_dataset_core(ds_train_raw,validation_dataset=True)
         ds_training_with_prediciton = compute_prediction_from_training_inputs(ds_training_normalized_x,spectrum_x,model)
-
+        ds_training_with_prediciton.time.encoding['units'] = 'seconds since %s'%datedaydt.strftime('%Y-%m-%d 00:00:00')
         ds_training_with_prediciton.to_netcdf(final_output)
         logging.info('final output : %s',final_output)
 
