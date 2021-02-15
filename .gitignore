@@ -8,3 +8,5 @@ sarhspredictor.egg-info/
 dist/
 
 sarhspredictor/examples/.ipynb_checkpoints/
+
+build/
