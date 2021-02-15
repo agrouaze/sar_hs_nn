@@ -1,0 +1,27 @@
+CHANGES
+=======
+
+* change outputdir Hs CCI
+* add pbr
+* change openstreetmap origin
+* small fix for time (xarray issue) at validation dataset generation
+* update to generate training and validation dataset (post ttraining)
+* remove useless sys path
+* readme impr
+* readme adds
+* improve readme
+* requirement more complete
+* update libs and script to prepare a new training dataset
+* update README
+* add script for CCI sea state formatting, + libs for CWAVE computation
+* readme update
+* clean code load
+* another script to modify after packaging
+* last correction after packaging
+* fix setup
+* add sarhs
+* add info
+* add pyproject file
+* add requirement
+* add the lib and bins
+* first commit

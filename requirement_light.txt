@@ -20,3 +20,4 @@ h5py==2.10.0
 libcblas=3.8.0
 gcc_impl_linux-64==7.5.0
 dask==2.30.0
+pbr==5.5.1

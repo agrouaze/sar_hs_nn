@@ -3,6 +3,7 @@ from setuptools import setup
 import setuptools
 
 setuptools.setup(setup_requires=['pbr'], pbr=True)
+
 packages = \
 ['sarhspredictor',
  'sarhspredictor.bin',
