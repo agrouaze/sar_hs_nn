@@ -1,6 +1,7 @@
 CHANGES
 =======
 
+* append setup.cfg
 * change outputdir Hs CCI
 * add pbr
 * change openstreetmap origin
