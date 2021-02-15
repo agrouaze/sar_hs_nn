@@ -1,6 +1,9 @@
 CHANGES
 =======
 
+* add keyword
+* ignore build
+* test
 * append setup.cfg
 * change outputdir Hs CCI
 * add pbr

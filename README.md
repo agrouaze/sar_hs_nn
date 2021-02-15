@@ -12,51 +12,39 @@ Used to produce CCI SeaState SAR product.
 `sarhs` lib is a copy paste from https://github.com/hawaii-ai/SAR-Wave-Height .
 
  # Installation of the lib in a conda environement
-1) install `poetry` binary
- ```bash
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
-```
-2) install conda
+
+1) install conda
 ```bash
 wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 ```
-3)) create a conda env
+2) create a conda env
  ```
  conda create -n sarhs python=3.7.8
  conda activate sarhs
 ```
-4) add setuptools
- ```bash
-conda install -c anaconda setuptools
-```
-5) clone the git repository.
+
+3) clone the git repository.
 ```bash
 git clone https://github.com/grouny/sar_hs_nn.git
 cd sar_hs_nn
 ```
 
-6) create a setupy.py with `poetry`
+4) install the `sarhspredictor` and its dependencies
 ```bash
-$HOME/.poetry/bin/poetry build --format sdist && tar --wildcards -xvf dist/*.tar.gz -O '*/setup.py' > setup.py
-```
-
-
-7) install the `sarhspredictor` and its dependencies
-```bash
-pip install -e .
+python setup.py install
 ```
 if the previous command failed try to run the command in error by yourself. It should looks like:
 ```bash
 ../bin/python3.7 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'../sar_hs_nn/setup.py'"'"'; __file__='"'"'../sar_hs_nn/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' develop --no-deps
 ```
 
-8) check installation
+5) check installation
 ```python
 import sarhspredictor
 ```
 
-9) edit the `sarhspredictor/config.py` file
+6) edit the `sarhspredictor/config.py` file
  In this file you can set the path of the different models .h5
 
 # usage
