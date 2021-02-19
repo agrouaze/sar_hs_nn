@@ -46,7 +46,7 @@ def preproc_ocn_wv(ds):
         logging.debug('put zero matrix X spectra')
         cspcRe = np.zeros((72,60))
         cspcIm = np.zeros((72,60))
-
+        ks1 =reference_oswK_1145m_60pts # we decided to not give predictions for spectra with a shape 36 30
         #ks1 = reference_oswK_1145m_60pts
     else:
         pass

@@ -34,6 +34,7 @@ def prepare_ocn_wv_data(pattern_path):
     logging.info('SAR data ready to be used')
     cspcRe = ocn_wv_ds['oswQualityCrossSpectraRe'].values
     cspcIm = ocn_wv_ds['oswQualityCrossSpectraIm'].values
+
     re = preprocess.conv_real(cspcRe)
     im = preprocess.conv_imaginary(cspcIm)
     logging.info('re : %s',re.shape)

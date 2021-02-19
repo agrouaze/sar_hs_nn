@@ -105,7 +105,10 @@ def read_infos_from_WV_ifremer_archive_v2 ( datedt,sato,wv,dev=False ) :
         logging.warning('dev mode reduction of input listing to first 2 ocn')
         measu_list = measu_list[0:2]
     logging.info('Nb ocn files to read: %s',len(measu_list))
-    s1_ocn_wv_ds = main_level_1(measu_list[: :-1],model)
+    if len(measu_list)>0:
+        s1_ocn_wv_ds = main_level_1(measu_list[: :-1],model)
+    else:
+        s1_ocn_wv_ds = None
     return s1_ocn_wv_ds
 
 
@@ -150,8 +153,8 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,wv,cwave_verison,redo=True ,r
                 logging.info('variable %s doesnt contains numeric values : %s',kk,s1_ocn_wv_ds[kk].values.dtype)
                 masked_vals = s1_ocn_wv_ds[kk].values
             if isinstance(masked_vals,np.ndarray):
-                masked_vals = np.ma.array(masked_vals)
-                logging.info('je triche je cast du masked : %s',type(masked_vals))
+                masked_vals = np.ma.array(masked_vals) #to have a valid fillvalue in netcdf attribut
+                logging.debug('cast du masked : %s',type(masked_vals))
             s1_ocn_wv_ds[kk] = xarray.DataArray(masked_vals,dims=s1_ocn_wv_ds[kk].dims,coords=s1_ocn_wv_ds.coords)
             logging.debug('%s %s ',kk,type(s1_ocn_wv_ds[kk].values))
             if kk in variables_infos:
@@ -195,7 +198,7 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,wv,cwave_verison,redo=True ,r
             elif kk in ['time']:
                 s1_ocn_wv_ds[kk].attrs['longname'] = "start time of the WV acquisition (lasts less than 3 seconds for one image)"
             else:
-                logging.error('no att for %s',kk)
+                logging.debug('no att for %s',kk)
         globatt = {
             'institution' : 'University of Hawaii , Laboratory of Physical and Spatial Oceanography  Institut Français pour la Recherche et l Exploitation de la MER, European Space Agency',
             'institution_abbreviation' : 'UH , LOPS-IFREMER, ESA',
@@ -296,11 +299,14 @@ def process_one_day_v2 ( dd,args ) :
     else :
         logging.info('outputdir = %s',outputdir)
         final_ds = read_infos_from_WV_ifremer_archive_v2(dd,args.sat,args.wv,dev=args.dev)
-        logging.debug('%s',final_ds.keys())
-        logging.debug('%s',final_ds.count())
-        logging.info('write the final netCDF')
-        status = write_netcdf_file_xarray(final_ds,filout,cwave_verison=args.cwave_version,redo=args.redo,wv=args.wv)
-
+        if final_ds is not None:
+            logging.debug('%s',final_ds.keys())
+            logging.debug('%s',final_ds.count())
+            logging.info('write the final netCDF')
+            status = write_netcdf_file_xarray(final_ds,filout,cwave_verison=args.cwave_version,redo=args.redo,wv=args.wv)
+        else:
+            logging.info('No WV OCN data for day : %s sat : %s',dd,args.sat)
+            status = 'nodata'
     return status,final_df
 
 
