@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#PBS -l walltime=15:30:00
+#PBS -l mem=5gb
+#PBS -N appHsnn
+#PBS -m n
+# command:
+# br156-100:~/git/sar_hs_nn/sarhspredictor/bin% /home/cersat5/tools/gogolist/bin/gogolist.py --mem=10G -e '/home1/datahome/agrouaze/sources/git/sar_hs_nn/sarhspredictor/bin/append_python_cwave_vars_to_training_dataset.pbs' /home/cercache/users/agrouaze/gogolist/cwave_apend_py_var_2_training_dataset_v2.txt
+pybin=/home1/datawork/agrouaze/conda_envs2/envs/cwave/bin/python
+#exe=/home1/datahome/agrouaze/sources/git/sar_hs_nn/sarhspredictor/bin/append_python_cwave_vars_to_training_dataset_4_justin.py
+exe=/home1/datahome/agrouaze/sources/git/sar_hs_nn/sarhspredictor/bin/rebuild_training_dataset.py
+echo 'input '$1
+$pybin $exe --input $1
+echo done

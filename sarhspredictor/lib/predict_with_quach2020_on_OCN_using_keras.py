@@ -55,10 +55,12 @@ def define_features(ds):
             addon = addon.reshape((addon.size,1))
         if features is None :
             features = addon
+            logging.debug('add %s features: %s',jj,features.shape)
         else :
             features = np.hstack([features,addon])
+            logging.debug('add %s features: %s',jj,features.shape)
     #  = np.dstack([ds['cwave'].values,ds['dxdt'].values,ds['latlonSARcossin'].values,ds['todSAR'].values,ds['incidence'].values,ds['satellite'].values])
-    logging.info('features ready')
+    logging.debug('features ready')
     return features
 
 def define_input_test_dataset(features,spectrum):
@@ -71,10 +73,16 @@ def define_input_test_dataset(features,spectrum):
     outputs = np.zeros(features.shape[0])
     inputs = [spectrum,features]
     test = (inputs,outputs)
-    logging.info('test dataset ready')
+    logging.debug('test dataset ready')
     return test
 
 def predict ( model,dataset ) :
+    """
+
+    :param model:
+    :param dataset:
+    :return:
+    """
     ys,yhats = [],[]
     for batch in dataset :
         inputs,y = batch
@@ -116,10 +124,10 @@ def do_my_prediction(model,test):
     :return:
     """
     from tqdm import tqdm
-    logging.info('start Hs prediction')
+    logging.debug('start Hs prediction')
     # _, yhat = predict(model,test)
     yhat = predict_agrouaze(model,test)
-    logging.info('prediction finished')
+    logging.debug('prediction finished')
     return yhat
 
 

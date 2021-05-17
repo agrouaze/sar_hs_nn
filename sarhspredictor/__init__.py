@@ -8,7 +8,10 @@ import pkg_resources  # part of setuptools
 from pbr.version import VersionInfo
 
 # This one seems to be slower, and with pyinstaller makes the exe a lot bigger
-v3 = VersionInfo('sarhspredictor').release_string()
+try:
+    v3 = VersionInfo('sarhspredictor').release_string()
+except:
+    v3='unknown_need_install_via_pip'
 #print('v3 {}'.format(v3))
 #__version__ = pkg_resources.get_distribution("sarhspredictor").version
 __version__ = v3

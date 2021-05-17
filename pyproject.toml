@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "sarhspredictor"
-version = "0.0.0"
+version = "0.0.1"
 description = "Hs prediction from SAR"
 license = "Apache-2.0"
 authors = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]

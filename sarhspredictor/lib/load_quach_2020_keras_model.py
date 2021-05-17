@@ -1,3 +1,4 @@
+# coding: utf-8
 import os, datetime
 import socket
 from IPython import get_ipython
@@ -9,12 +10,13 @@ SHERPA_TRIAL_ID = os.environ.get('SHERPA_TRIAL_ID', '0')
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true' # Needed to avoid cudnn bug.
 import logging
 import tensorflow as tf
-from tensorflow.keras.callbacks import *
+#from tensorflow.keras.callbacks import *
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model, load_model
 import tensorflow.keras as keras
-from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017
+from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017,\
+    model_IFR_replication_quach2020_sadowski_release_5feb2021,model_IFR_replication_quach2020_sadowski_release_5feb2021_v2
 print('keras',keras.__version__)
 print('tensorflow',tf.__version__)
 print()
@@ -72,6 +74,20 @@ def load_quach2020_model_v2():
     """
     #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
     file_model = model_heteroskedastic_2017
+    custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
+    model = load_model(file_model, custom_objects=custom_objects)
+    return model
+
+def load_quach2020_model_v2_alt(version=1):
+    """
+    replicate model of the official model provided by Sadowski in feb 2021 (trained in 43min at ifremer)
+    :return:
+    """
+    #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+    if version==1:
+        file_model = model_IFR_replication_quach2020_sadowski_release_5feb2021
+    elif version ==2:
+        file_model = model_IFR_replication_quach2020_sadowski_release_5feb2021_v2
     custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
     model = load_model(file_model, custom_objects=custom_objects)
     return model

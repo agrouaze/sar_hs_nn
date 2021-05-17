@@ -42,7 +42,7 @@ INPUT_JUSTIN = '/home1/datawork/agrouaze/data/sentinel1/cwave/reference_input_ou
 
 def append_python_vars_ds2019 ( satellite,datedaydt,ffout,dev=False ) :
     """
-    10 fev 2021: I spit the dataset by day to distribute otherwise monthly chuncks take too much time to process
+    10 fev 2021: I split the dataset by day to distribute otherwise monthly chuncks take too much time to process
     :param satellite: S1A or S1B (str)
     :param datedaydt: datetime
     :param dev:

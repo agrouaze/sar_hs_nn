@@ -332,7 +332,8 @@ def predict_and_save(ref_ds,outputdir,hs_ref,hs_ref_std,input_ref_file,modelname
 
     ref_ds['hs_ref_ifr'] = xarray.DataArray(hs_ref,dims=['time'])
     ref_ds['hs_ref_std_ifr'] = xarray.DataArray(hs_ref_std,dims=['time'])
-    ref_ds['features'] = xarray.DataArray(featuresArray,dims=['time','featdim'],coords={'time':ref_ds['time'].values,'featdim':np.arange(32)})
+    ref_ds['features'] = xarray.DataArray(featuresArray,dims=['time','featdim'],coords={'time':ref_ds['time'].values,
+                                                                                        'featdim':np.arange(32)})
     logging.debug('ref_ds modified : %s',ref_ds)
     #pdb.set_trace()
     outputpath = os.path.join(outputdir,'Quach2020_ifr_predict_using_ref_CWAVE_%s_%s'%(modelname,os.path.basename(input_ref_file)))
