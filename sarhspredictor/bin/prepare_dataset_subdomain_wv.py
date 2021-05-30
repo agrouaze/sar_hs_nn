@@ -66,23 +66,25 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     :return:
     """
     t_gather_param0 = time.time()
+
     mat_s0_dB = 10. * np.log10(subset['sigma0'].values)
     mask_finite_s0 = np.isfinite(mat_s0_dB)
     mean_s0 = np.mean(mat_s0_dB[mask_finite_s0])
+    logging.info('mean_s0 : %s %s elapsed :%s seconds',type(mean_s0),mean_s0,time.time() - t_gather_param0)
     # mean_s0 = np.array([-5.46]) #for test /dev je force avec la valeur moyenne indiquer dans le L2 -> ca ne change pas le problem de prediction
     # code from LOP lop_osw_application.py L 3113
     image = subset['digital_number'].values
     dummy = (image * np.conj(image)).real
     intensity = np.mean(dummy)
     normvar = np.var(dummy,ddof=1) / intensity ** 2.
-    logging.debug('normvar %s %s',type(normvar),normvar)
-    logging.debug('mean_s0 : %s %s',type(mean_s0),mean_s0)
+    logging.info('normvar %s %s elapsed :%s seconds',type(normvar),normvar,time.time()-t_gather_param0)
+    t_geoloc = time.time()
     central_xrange_ind = int(subset['incidence'].shape[1] / 2)
     central_azimuth_ind = int(subset['incidence'].shape[0] / 2)
     central_inc = subset['incidence'].values[central_xrange_ind,central_azimuth_ind]
     central_lon = subset['longitude'].values[central_xrange_ind,central_azimuth_ind]
     central_lat = subset['latitude'].values[central_xrange_ind,central_azimuth_ind]
-    logging.debug('central_inc %s central_lon %s central_lat %s',central_inc,central_lon,central_lat)
+    logging.info('central_inc %s central_lon %s central_lat %s (elapsed %s seconds)',central_inc,central_lon,central_lat,time.time()-t_geoloc)
     # step 4 convert cross spectra of each sub images into k,phi polar grid
     # skip this step since there is a pol->cartesian conversion in the method to get CWAVE params I can avoid
     # step 5 compute C-wave 22 params on cross spectra
@@ -95,11 +97,12 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     #                                                                    r_i=reference_oswK_1145m_60pts,Jacobian=False)
     # new_spec_PolarRe = conversion_polar_cartesian.from_xCartesianSpectrum(crossSpectraRe,Nphi=72,
     #                                                                                 ksampling='log',**{'Nk' : 60})
+    t_polcaart = time.time()
     new_spec_PolarRe = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(crossSpectraRe,Nphi=72,
                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
             reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
     logging.debug('new_spec_Polar : %s',new_spec_PolarRe)
-    logging.debug('new_spec_PolarRe.')
+    logging.info('new_spec_PolarRe. elapsed %s s',time.time()-t_polcaart)
 
     new_spec_PolarIm = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(crossSpectraIm,Nphi=72,
                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
@@ -120,15 +123,19 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     crossSpectraImPol = xsarsea.spectrum_rotation.apply_rotation(crossSpectraImPol,subset.attrs['platform_heading'])
     # change amplitude of X spectra to match expected range in ESA L2 (patch ugly)
     logging.debug('change amplitude X spectra (current max : %1.5f)',np.amax(crossSpectraRePol))
+    divisor = np.amax(crossSpectraRePol.values)/60. #
+    divisor = 45000.
     #crossSpectraRePol = crossSpectraRePol / 45000.
     #crossSpectraImPol = crossSpectraImPol / 45000.
+    logging.info('artifical normalization factor for polar cross spectra: %s',divisor)
+    crossSpectraRePol = crossSpectraRePol/divisor
+    crossSpectraImPol = crossSpectraImPol / divisor
     logging.debug('crossSpectraRePol = %s new max : %1.5f',crossSpectraRePol.shape,np.amax(crossSpectraRePol))
     crossSpectraRePol = crossSpectraRePol.squeeze()
     crossSpectraImPol = crossSpectraImPol.squeeze()
-    crossSpectraRePol = crossSpectraRePol.T
-    crossSpectraImPol = crossSpectraImPol.T
+
     logging.debug('crossSpectraRePol : %s',crossSpectraRePol.shape)
-    assert crossSpectraRePol.shape == (72,60)  # case only one spectra
+
     pt1 = (subset['longitude'].values[0,0],subset['latitude'].values[0,0])
     pt2 = (subset['longitude'].values[0,-1],subset['latitude'].values[0,-1])
     pt3 = (subset['longitude'].values[-1,-1],subset['latitude'].values[-1,-1])
@@ -142,10 +149,12 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     latsL1 = np.append(latsL1,latsL1[0])
     logging.debug('lonsL1: %s',lonsL1)
     logging.debug('latsL1: %s',latsL1)
-    image_heading,A,B = get_heading_from_corners(lonsL1,latsL1,oswHeading=subset.attrs['platform_heading'],
-                                                 corners=corners_L1,edge='right')
-    logging.debug('image_heading = %1.3f platform pointing : %s (ie %1.3f)',image_heading,subset.attrs['platform_heading'],
-                  subset.attrs['platform_heading'] % 360)
+    # image_heading,A,B = get_heading_from_corners(lonsL1,latsL1,oswHeading=subset.attrs['platform_heading'],
+
+    #                                              corners=corners_L1,edge='right')
+    # logging.debug('image_heading = %1.3f platform pointing : %s (ie %1.3f)',image_heading,subset.attrs['platform_heading'],
+    #               subset.attrs['platform_heading'] % 360)
+    image_heading = subset.attrs['platform_heading'] #small trick to skip the image heading computation which is almost the same as platform heading in my test image
     logging.info('time to gather params to do the inference (except cwave) :%1.1f seconds',time.time()-t_gather_param0)
     if use_cwave_lib_without_cartpolconv :
         # this case is not used
@@ -161,7 +170,8 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
         logging.debug('any NaN in the X spectra pol ? %s %s',np.isnan(crossSpectraRePol).any(),
                       np.isnan(crossSpectraImPol).any())
         t_cwave0 = time.time()
-        subset_ok,_,_,_,_,ks1,ths1,_,_,_,S = format_input_CWAVE_vector_from_OCN(crossSpectraRePol,crossSpectraImPol,
+        assert crossSpectraRePol.shape == (60,72)  # case only one spectra
+        subset_ok,_,_,_,_,ks1,ths1,_,_,_,S = format_input_CWAVE_vector_from_OCN(crossSpectraRePol.values,crossSpectraImPol.values,
                                                                                 ths1=np.arange(0,360,5),
                                                                                 ta=image_heading,
                                                                                 incidenceangle=central_inc,
@@ -170,7 +180,8 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
                                                                                 datedt=datedt,lonSAR=central_lon,
                                                                                 latSAR=central_lat,
                                                                                 satellite=satellite)
-        logging.info('time to compute cwave params : %1.3f',time.time()-t_cwave0)
+        logging.debug('time to compute cwave params : %1.3f',time.time()-t_cwave0)
+        assert np.isfinite(S).any()
     # step 6 : normalize the params using sarhspredictor lib
     cwave = np.hstack([S.T,mean_s0.reshape(-1,1),normvar.reshape(-1,1)])  # found L77 in preprocess.py
     cwave = preprocess.conv_cwave(cwave)
@@ -179,7 +190,8 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     latSARcossin = preprocess.conv_position(central_lat)  # Gets cos and sin
     lonSARcossin = preprocess.conv_position(central_lon)
     latlonSARcossin = np.hstack([latSARcossin,lonSARcossin])
-
+    crossSpectraRePol = crossSpectraRePol.T # from 60,72 -> 72,60
+    crossSpectraImPol = crossSpectraImPol.T
     crossSpectraRe_conv = preprocess.conv_real(crossSpectraRePol.values.reshape((1,72,60)))
     crossSpectraIm_conv = preprocess.conv_imaginary(crossSpectraImPol.values.reshape((1,72,60)))
     spectrum = np.stack((crossSpectraRe_conv,crossSpectraIm_conv),axis=3)
@@ -262,12 +274,12 @@ def do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,
     features = predict_with_quach2020_on_OCN_using_keras.define_features(ds)
     input_values = predict_with_quach2020_on_OCN_using_keras.define_input_test_dataset(features,spectrum)
     yhat = predict_with_quach2020_on_OCN_using_keras.do_my_prediction(model,input_values)
-    logging.info('time to do the prediction: %1.3f seconds',time.time()-t_predict0)
+    logging.debug('time to do the prediction: %1.3f seconds',time.time()-t_predict0)
     hs_predicted = yhat[:,0]
     hs_uncertainty = yhat[:,1]
     ds['HsQuach'] = xarray.DataArray(data=hs_predicted,dims=['time'])
     ds['HsQuach_uncertainty'] = xarray.DataArray(data=hs_uncertainty,dims=['time'])
-    logging.info('hs Quach : %1.4f m',hs_predicted)
+    logging.debug('hs Quach : %1.4f m',hs_predicted)
     return ds
 
 def treat_xspectra_one_subimage(allspecs_per_sub_domain,subdomain,satellite,datedt,slc,splitting_image,model,
@@ -293,7 +305,15 @@ def treat_xspectra_one_subimage(allspecs_per_sub_domain,subdomain,satellite,date
     kx_ori = allspecs_per_sub_domain[subdomain]['kx'].values
     ky_ori = allspecs_per_sub_domain[subdomain]['ky'].values
     rect = splitting_image[subdomain]
+    t_isel = time.time()
     subset = slc.isel(azimuth=rect['azimuth'],range=rect['range'])
+    logging.info('time to isel in the image: %s',time.time()-t_isel)
+    t_pers = time.time()
+    subset['sigma0'] = subset['sigma0'].persist() # test to see if it increase the speed to compute the hs
+    subset['incidence'] = subset['incidence'].persist()
+    subset['longitude'] = subset['longitude'].persist()
+    subset['latitude'] = subset['latitude'].persist()
+    logging.info('time to persist : %s seconds',time.time()-t_pers)
     ds = do_inferences_from_slc_xspectra(subset,datedt,satellite,model,kx_ori,ky_ori,crossSpectraRe,crossSpectraIm,
                                     use_cwave_lib_without_cartpolconv=False)
 
@@ -357,15 +377,17 @@ def get_data_for_inferences_on_subdomains(onetiff):
                                    noverlap={'range' : overlap_size,'azimuth' : overlap_size}
                                     ,spacing_tol=1e-3)
     logging.info('time to get %s X-spectra : %1.1f seconds',len(allspecs_per_sub_domain),time.time()-t0)
-    logging.info('loeading model')
+    logging.info('loading model')
     modelQuach2020 = load_quach_2020_keras_model.load_quach2020_model_v2()
     # step 3 for each sub images compute cwaves params and NRCS and Nv
     all_ds_subs = []
     for subdomain in allspecs_per_sub_domain:
-        if subdomain%10==0:
-            logging.info("inferences on sub images %i/%s",subdomain,len(allspecs_per_sub_domain))
+        t_subdo = time.time()
         ds_sub_im = treat_xspectra_one_subimage(allspecs_per_sub_domain,subdomain,satellite,datedt,slc,
                                                 splitting_image,model=modelQuach2020)
+        if subdomain%1==0:
+            logging.info("inferences on sub images %i/%s elapsed time %1.1f seconds hs: %1.3fm",
+                         subdomain,len(allspecs_per_sub_domain),time.time()-t_subdo,ds_sub_im['HsQuach'].values)
         all_ds_subs.append(ds_sub_im)
     all_ds_subs = xarray.concat(all_ds_subs,dim='subdomDim')
     all_ds_subs = xarray.merge([all_ds_subs,limits_sub_images]) #add the limits of the sub images
@@ -381,7 +403,7 @@ def get_data_for_inferences_on_subdomains(onetiff):
     #save the file for the full image:
     ds_inferences_full_image = treat_xspectra_fullimage(allspecs,satellite,datedt,slc,model=modelQuach2020,
                                                         use_cwave_lib_without_cartpolconv=False)
-    outputfile_full = '/home1/scratch/agrouaze/prediction_hs_over_full_SAR_images_%s_%sx%s_v2.nc' % (
+    outputfile_full = '/home1/scratch/agrouaze/prediction_hs_over_full_SAR_images_%s_%sx%s_v3.nc' % (
     os.path.basename(onetiff).replace('.tiff',''),subimage_azimuth,subimage_range)
     ds_inferences_full_image.to_netcdf(outputfile_full)
     logging.info('successfully creation written of output file : %s',outputfile_full)
@@ -408,9 +430,9 @@ if __name__ =='__main__':
 
     logging.debug('test')
     t0 = time.time()
-    #one_tiff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2019/278/S1A_WV_SLC__1SSV_20191005T163939_20191005T171407_029326_035559_2461.SAFE/measurement/s1a-wv1-slc-vv-20191005t165023-20191005t165026-029326-035559-045.tiff'
+    one_tiff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2019/278/S1A_WV_SLC__1SSV_20191005T163939_20191005T171407_029326_035559_2461.SAFE/measurement/s1a-wv1-slc-vv-20191005t165023-20191005t165026-029326-035559-045.tiff'
     # one image with same size in tiff and setninel gdal driver
-    one_tiff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2019/278/S1A_WV_SLC__1SSV_20191005T163939_20191005T171407_029326_035559_2461.SAFE/measurement/s1a-wv1-slc-vv-20191005t170433-20191005t170436-029326-035559-103.tiff'
+    #one_tiff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2019/278/S1A_WV_SLC__1SSV_20191005T163939_20191005T171407_029326_035559_2461.SAFE/measurement/s1a-wv1-slc-vv-20191005t170433-20191005t170436-029326-035559-103.tiff'
     logging.info('file to treat : %s',os.path.basename(one_tiff))
     get_data_for_inferences_on_subdomains(one_tiff)
     logging.info('done in %s seconds',time.time()-t0)

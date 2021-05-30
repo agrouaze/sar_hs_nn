@@ -131,8 +131,13 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,wv,cwave_verison,redo=True ,r
     s1_ocn_wv_ds['swh_rejection_flags']= xarray.DataArray(np.zeros(len(s1_ocn_wv_ds['oswLon'])),
                                 dims=s1_ocn_wv_ds['swh_uncertainty'].dims,coords=s1_ocn_wv_ds['swh_uncertainty'].coords)
     #add distance to coast
-    landmask,distance_to_coast = swiml2sproc_utils_ancillary_landmask.get_landmask(s1_ocn_wv_ds['oswLon'].values,
-                                    s1_ocn_wv_ds['oswLat'].values,land_polygon_path,land_raster_path,debug_figures=False)
+    # trick to avoid crash with latitude  out of the 0 360 (or -180 180)
+    tmplats = s1_ocn_wv_ds['oswLat'].values
+    tmplons = s1_ocn_wv_ds['oswLon'].values
+    tmplats[tmplats>90] = 0
+    tmplons[tmplons > 360] = 0
+    landmask,distance_to_coast = swiml2sproc_utils_ancillary_landmask.get_landmask(tmplons,
+                                    tmplats,land_polygon_path,land_raster_path,debug_figures=False)
     s1_ocn_wv_ds['distance_to_coast']= xarray.DataArray(distance_to_coast,
                                 dims=s1_ocn_wv_ds['swh_uncertainty'].dims,coords=s1_ocn_wv_ds['swh_uncertainty'].coords)
     logging.debug('rename')
@@ -140,7 +145,8 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,wv,cwave_verison,redo=True ,r
     if remove_training_vars:
         s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['S','cwave','incidence','latlonSARcossin','dxdt','todSAR','oswIncidenceAngle'])
         s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['oswQualityCrossSpectraRe','satellite'])
-        s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['oswQualityCrossSpectraIm','Sdim','cwavedim','dxdtdim','latlondim','incdim','oswAngularBinSize','oswWavenumberBinSize'])
+        s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['oswQualityCrossSpectraIm','Sdim','cwavedim','dxdtdim','latlondim','incdim',
+                                          'oswAngularBinSize','oswWavenumberBinSize'])
     if len(s1_ocn_wv_ds['swh_uncertainty'])>0:
 
         #add var attributes
