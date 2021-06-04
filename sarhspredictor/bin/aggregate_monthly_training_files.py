@@ -28,13 +28,19 @@ def parse_filename ( filename ) :
     # platform, date, _ext = re.split('_|\.', filename)
     # platform,_alt,date,_ext = re.split('_|\.',filename)
     print(re.split('[_.]',filename))
-    platform,_alt,date,_,_ext = re.split('[_.]',filename)
-    assert _alt == 'ALT',_alt
-    assert _ext == 'nc',_ext
+    if 'exp1' in filename:
+        platform,_,_,_,_,_,date,_ext = re.split('[_.]',filename)
+        assert _ext == 'h5',_ext
+        logging.debug('date parsed: %s',date)
+    else:
+        platform,_alt,date,_,_ext = re.split('[_.]',filename)
+        assert _alt == 'ALT',_alt
+        assert _ext == 'nc',_ext
+        assert date[:5] == 'coloc'
+        date = date[5 :]
     satellite = int(platform[2] == 'A')  # Encodes type A as 1 and B as 0
     # rval = {'satellite':satellite}
-    assert date[:5] == 'coloc'
-    date = date[5 :]
+
     year = int(date[0 :4])
     month = int(date[4 :6])
     rval = {'satellite' : satellite,'year' : year,'month' : month}

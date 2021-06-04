@@ -115,6 +115,8 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     %   s1a-wv2-ocn-vv-20151130t201457-20151130t201500-008838-00c9f5-046.nc
     % hsSM=1.3282
     """
+    assert cspcIm.shape == (60,72)
+    assert cspcRe.shape == (60,72)
     t0 = time.time()
     logging.debug('start computing hs total SAR with X spectra shape %s',cspcRe.shape)
 #     % Constants for CWAVE======================================================
