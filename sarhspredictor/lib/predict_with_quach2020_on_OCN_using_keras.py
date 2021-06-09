@@ -140,8 +140,8 @@ def main_level_0(s1_ocn_wv_ds,spectrum,model):
     features = define_features(s1_ocn_wv_ds)
     test = define_input_test_dataset(features,spectrum)
     yhat = do_my_prediction(model,test)
-    s1_ocn_wv_ds['HsQuach'] = xarray.DataArray(data=yhat[:,0],dims=['time'])
-    s1_ocn_wv_ds['HsQuach_uncertainty'] = xarray.DataArray(data=yhat[:,1],dims=['time'])
+    s1_ocn_wv_ds['swh'] = xarray.DataArray(data=yhat[:,0],dims=['time'])
+    s1_ocn_wv_ds['swh_uncertainty'] = xarray.DataArray(data=yhat[:,1],dims=['time'])
     return s1_ocn_wv_ds
 
 def main_level_1(pattern_path,model):

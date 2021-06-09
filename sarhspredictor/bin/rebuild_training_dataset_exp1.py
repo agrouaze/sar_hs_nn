@@ -1,10 +1,13 @@
 """
 exp 1: doing the Quach experiment with X spectra from SLC instead of OCN
+ steps 1) read a tiff 2) find the indice of this tiff in the cwaveV4 to retrieve Hs alti 3) compute 22 CWAVE params from SLC cross spectra 4) add SLC cross spectra
+ (note that I could keep the CWAVE params from L2 xspectra... not tested yet)
 May 2021
 A Grouazel
 the listing of tiff to treat is here: /home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4.txt
 inspiration rebuild_training_dataset.py
 tested with cwave
+
 """
 import os
 import sys
@@ -24,22 +27,11 @@ import resource
 warnings.simplefilter(action='ignore',category=FutureWarning)
 from scipy.spatial import KDTree
 import traceback
-import spectrum_clockwise_to_trigo
-import spectrum_rotation
-import xsarsea.conversion_polar_cartesian
+
 import pdb
-from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
-reference_oswK_1145m_60pts = np.array([0.005235988,0.00557381,0.005933429,0.00631625,0.00672377,
-                                       0.007157583,0.007619386,0.008110984,0.008634299,0.009191379,
-                                       0.0097844,0.01041568,0.0110877,0.01180307,0.01256459,0.01337525,
-                                       0.01423822,0.01515686,0.01613477,0.01717577,0.01828394,0.01946361,
-                                       0.02071939,0.02205619,0.02347924,0.02499411,0.02660671,0.02832336,
-                                       0.03015076,0.03209607,0.03416689,0.03637131,0.03871796,0.04121602,
-                                       0.04387525,0.04670605,0.0497195,0.05292737,0.05634221,0.05997737,
-                                       0.06384707,0.06796645,0.0723516,0.07701967,0.08198893,0.08727881,
-                                       0.09290998,0.09890447,0.1052857,0.1120787,0.1193099,0.1270077,
-                                       0.1352022,0.1439253,0.1532113,0.1630964,0.1736193,0.1848211,
-                                       0.1967456,0.2094395])
+
+from predict_hs_from_SLC import compute_Cwave_params_and_xspectra_fromSLC
+
 DIR_ORIGINAL_COLOCS = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/colocations/original_colocations_YoungAltiDatabase_vs_WV_L2_Jstopa/cwaveV4/'
 OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v1/'
 def round_seconds(obj: datetime.datetime) -> datetime.datetime:
@@ -137,7 +129,8 @@ def read_coloc_file(slc,ocn):
     return new_times,lon_x,lat_x,sat,ds_coloc,datedt_ocn
 
 
-def prepare_one_measurement(slc,ocn,redo=False,dev=False,outputdir=None):
+
+def prepare_one_measurement(slc,ocn,dev=False):
     """
 
     :param slc: str
@@ -148,150 +141,84 @@ def prepare_one_measurement(slc,ocn,redo=False,dev=False,outputdir=None):
     logging.debug('slc :%s',slc)
     logging.debug('ocn: %s',ocn)
 
-    datedt_slc = datetime.datetime.strptime(os.path.basename(slc).split('-')[4],'%Y%m%dt%H%M%S') # cette date change bien mem pour les data en 2015Z
+    new_times,lon_x,lat_x,sat,ds_coloc,datedt_ocn = read_coloc_file(slc,ocn)
+    inds,ds_coloc,cptx = find_indices_sar_acquisition_in_monthly_colocs(ds_coloc,datedt_ocn,lon_x,lat_x,new_times)
+    nb_match = len(inds)
+    # 1) read all params from Justin s dataset
+    subsetcoloc = ds_coloc.isel(time=inds) #{ on peut selectionner plusieurs indice en meme temps avec isel}
 
-
-    #outputfile = '/home1/scratch/agrouaze/test_training_exp1/%s/%s/training_%s.nc' % (datedt_slc.strftime('%Y'),datedt_slc.strftime('%j'),os.path.basename(slc))
-    if outputdir:
-        outdir = outputdir
-    else:
-        outdir = OUTPUTDIR
-    outputfile = os.path.join(outdir,datedt_slc.strftime('%Y'),
-                              datedt_slc.strftime('%j'),'training_%s.nc' %os.path.basename(slc).replace('.tiff',''))
-    if os.path.exists(os.path.dirname(outputfile)) is False :
-        os.makedirs(os.path.dirname(outputfile),0o0775)
-    if os.path.exists(outputfile) and redo:
-        os.remove(outputfile)
-    if os.path.exists(outputfile) and redo is False:
-        logging.info('nothing to do, the file already exists')
-        return
-    else:
-        new_times,lon_x,lat_x,sat,ds_coloc,datedt_ocn = read_coloc_file(slc,ocn)
-        # ici
-        inds,ds_coloc,cptx = find_indices_sar_acquisition_in_monthly_colocs(ds_coloc,datedt_ocn,lon_x,lat_x,new_times)
-        nb_match = len(inds)
-        # 1) read all params from Justin s dataset
-        subsetcoloc = ds_coloc.isel(time=inds) #{ on peut selectionner plusieurs indice en meme temps avec isel}
-
-        logging.info('subsetcoloc : %s',subsetcoloc)
-        # keep a time dimension to be sure to be able to gather with open_mfdataset
-        for vv in subsetcoloc.keys():
-            logging.debug('vv: %s %s',vv,subsetcoloc[vv].shape)
-            if vv in ['S','cspcRe','cspcIm']:
-                subsetcoloc = subsetcoloc.drop(vv)
-            elif vv in ['phi','k','th']:
-                pass
-            else:
-                pass # finalement ca fout la m..... d avoir une dim time en plus
-                #subsetcoloc[vv] = subsetcoloc[vv].assign_coords({'time':[datedt_slc]})
-                #if subsetcoloc[vv].size>1:
-                # reshped_data = subsetcoloc[vv].values.reshape((1,)+subsetcoloc[vv].shape)
-                # new_dims = ['time']+list(subsetcoloc[vv].dims)
-                # new_coords = copy.copy(subsetcoloc[vv].coords)
-                # logging.info('new_coords : %s %s %s',type(new_coords),new_coords,new_coords.keys())
-                # if new_coords.dims==():
-                #     new_coords = {'time':[datedt_slc]}
-                # else:
-                #     new_coords['time'] = [datedt_slc]
-                # subsetcoloc[vv] = xarray.DataArray(reshped_data,dims=new_dims,
-                #                                    coords=new_coords)
-        # 2) read X spectra from tiff
-        dsslc = xsarsea.cross_spectra_core.read_slc(slc)
-        if dev:
-            nperseg = {'range' : 2048,'azimuth' : 2048}
+    logging.info('subsetcoloc : %s',subsetcoloc)
+    # keep a time dimension to be sure to be able to gather with open_mfdataset
+    for vv in subsetcoloc.keys():
+        logging.debug('vv: %s %s',vv,subsetcoloc[vv].shape)
+        if vv in ['S','cspcRe','cspcIm']:
+            subsetcoloc = subsetcoloc.drop(vv)
+        elif vv in ['phi','k','th']:
+            pass
         else:
-            nperseg = {'range' : 512,'azimuth' : 512}
-        t0 = time.time()
-        allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image,\
-        limits_sub_images = xsarsea.cross_spectra_core.compute_SAR_cross_spectrum(
-            dsslc,
-            N_look=3,look_width=0.25,
-            look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
-            welsh_window='hanning',
-            nperseg=nperseg,
-            noverlap={'range' : 256,'azimuth' : 256}
-            ,spacing_tol=1e-3,debug_plot=False,return_periodoXspec=False)
-        logging.info('time to get %s X-spectra : %1.1f seconds',len(splitting_image),time.time() - t0)
-        # 3) interpolate and convert cartesian grid to polar 72,60
-        xspecRe = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').real)
-        crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
-                                                                                    ksampling='log',**{'Nk' : 60,'kmin' :
-                reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-        crossSpectraRePol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-            crossSpectraRePol)
-        crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,90.)  # This is for having origin at North
-        crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,dsslc.attrs['platform_heading'])
-        crossSpectraRePolval = copy.copy(crossSpectraRePol.values.squeeze())
+            pass # finalement ca fout la m..... d avoir une dim time en plus
+            #subsetcoloc[vv] = subsetcoloc[vv].assign_coords({'time':[datedt_slc]})
+            #if subsetcoloc[vv].size>1:
+            # reshped_data = subsetcoloc[vv].values.reshape((1,)+subsetcoloc[vv].shape)
+            # new_dims = ['time']+list(subsetcoloc[vv].dims)
+            # new_coords = copy.copy(subsetcoloc[vv].coords)
+            # logging.info('new_coords : %s %s %s',type(new_coords),new_coords,new_coords.keys())
+            # if new_coords.dims==():
+            #     new_coords = {'time':[datedt_slc]}
+            # else:
+            #     new_coords['time'] = [datedt_slc]
+            # subsetcoloc[vv] = xarray.DataArray(reshped_data,dims=new_dims,
+            #                                    coords=new_coords)
 
+    # 4) compute C wave params
+    ths1 = np.arange(0,360,5)
+    ta = subsetcoloc['trackAngle'].values[0]
+    s0 = subsetcoloc['sigma0'].values[0]
+    nv = subsetcoloc['normalizedVariance'].values[0]
+    incidenceangle = subsetcoloc['incidenceAngle'].values[0]
+    lonsar = subsetcoloc['lonSAR'].values[0]
+    latsar = subsetcoloc['latSAR'].values[0]
 
-        xspecIm = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').imag)
-        crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm,Nphi=72,
-                                                                                    ksampling='log',**{'Nk' : 60,'kmin' :
-                reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-        crossSpectraImPol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-            crossSpectraImPol)
-        crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,90.)  # This is for having origin at North
-        crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,dsslc.attrs['platform_heading'])
-        crossSpectraImPolval = copy.copy(crossSpectraImPol.values.squeeze())
-        # 4) compute C wave params
-        ths1 = np.arange(0,360,5)
-        ta = subsetcoloc['trackAngle'].values[0]
-        s0 = subsetcoloc['sigma0'].values[0]
-        nv = subsetcoloc['normalizedVariance'].values[0]
-        incidenceangle = subsetcoloc['incidenceAngle'].values[0]
-        lonsar = subsetcoloc['lonSAR'].values[0]
-        latsar = subsetcoloc['latSAR'].values[0]
-        logging.info('crossSpectraRePol %s',crossSpectraRePol.shape)
-        logging.info('ta : %s',ta)
-        logging.info('incidenceangle : %s',incidenceangle)
-        lstvars_with_scale_factor_and_offset = ['hsALTmin','hsALTmax','incidenceAngle','hsALT','hsWW3','wsALTmin',
+    crossSpectraImPol_xa,crossSpectraRePol_xa,times_bidons,S = compute_Cwave_params_and_xspectra_fromSLC(slc,dev,
+                    nb_match=1,ths1=ths1,ta=ta,s0=s0,nv=nv,incidenceangle=incidenceangle,lonsar=lonsar,latsar=latsar)
+    subsetcoloc = subsetcoloc.drop('k') #to avoid issues of ambigiuity on k (whether coords or variable)
+    subsetcoloc['crossSpectraImPol'] = crossSpectraImPol_xa
+    subsetcoloc['crossSpectraRePol'] = crossSpectraRePol_xa
+    logging.info('crossSpectraRePol %s',crossSpectraRePol_xa.shape)
+    logging.info('ta : %s',ta)
+    logging.info('incidenceangle : %s',incidenceangle)
+    lstvars_with_scale_factor_and_offset = ['hsALTmin','hsALTmax','incidenceAngle','hsALT','hsWW3','wsALTmin',
                                             'wsALT','wsALTmax','dx','dt','nk','nth','hsSM','h200','h400','h800',
-                                                'trackAngle','hsWW3v2']
-        for vvy in lstvars_with_scale_factor_and_offset:
-            subsetcoloc[vvy].encoding =  {}
-        subsetcoloc = subsetcoloc.drop('k') #to avoid ambiguous k coordinates definition
-        for hh in subsetcoloc:
-            if 'prb' in hh:
-                subsetcoloc = subsetcoloc.drop(hh)
-        # duplicate the X spectra and CWAVE params for the N number of colcoations with this particular SAR acquisition
-        multi_xpsec_im = np.tile(crossSpectraImPol.values,(nb_match,1,1))
-        multi_xpsec_re = np.tile(crossSpectraRePol.values,(nb_match,1,1))
-        logging.info('multi_xpsec_im %s',multi_xpsec_im.shape)
-        times_bidons = [datedt_slc] #dirty trick, j invente des dates pour pouvoir ensuite aggregger les colocs ensemble a coup de mfdataset
-        for ttt in range(1,nb_match):
-            times_bidons.append(datedt_slc+datetime.timedelta(seconds=ttt))
-        logging.info('times_bidons : %s',times_bidons)
-        subsetcoloc['crossSpectraImPol'] = xarray.DataArray(multi_xpsec_im,dims=['time','k','phi'],
-                                coords={'time':times_bidons,
-                                        'k':crossSpectraImPol.k.values,
-                                        'phi':crossSpectraImPol.phi.values
-                                        })
-        subsetcoloc['crossSpectraRePol'] = xarray.DataArray(multi_xpsec_re,dims=['time','k','phi'],
-                                coords={'time':times_bidons,
-                                        'k':crossSpectraRePol.k.values,
-                                        'phi':crossSpectraRePol.phi.values
-                                        })
-        #subsetcoloc['crossSpectraImPol'] = crossSpectraImPol # version simple si il ny avait pas eu des multi colocs
-        #subsetcoloc['crossSpectraRePol'] = crossSpectraRePol
-        subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRev2,ks1,ths1,kx,ky,cspcReX_not_conservativ,S = format_input_CWAVE_vector_from_OCN(
-            cspcRe=crossSpectraRePolval,cspcIm=crossSpectraImPolval,ths1=ths1,ta=ta,
-            incidenceangle=incidenceangle,s0=s0,nv=nv,ks1=reference_oswK_1145m_60pts,
-            datedt=datedt_slc,lonSAR=lonsar,latSAR=latsar,satellite=sat)
-        logging.info('S size: %s',S.shape)
-        assert np.isfinite(S).all()
+                                            'trackAngle','hsWW3v2']
+    for vvy in lstvars_with_scale_factor_and_offset :
+        if vvy in subsetcoloc:
+            subsetcoloc[vvy].encoding = {}
+    subsetcoloc = subsetcoloc.drop('k')  # to avoid ambiguous k coordinates definition
+    for hh in subsetcoloc :
+        if 'prb' in hh :
+            subsetcoloc = subsetcoloc.drop(hh)
 
-        subsetcoloc['py_S'] = xarray.DataArray(np.tile(S.T,(nb_match,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
-        #subsetcoloc['py_S'] = xarray.DataArray(S.T,dims=['time','N'],coords={'time':[datedt_slc],'N':np.arange(20)}) #solution simple
-        #subsetcoloc['py_S'] = subsetcoloc['py_S'].attrs['description']='20 C-WAVE params computed from polar cross spectra 2-tau'
-        # 5 ) save a netcdf file
-        subsetcoloc.attrs['created_on'] = '%s'%datetime.datetime.today()
-        subsetcoloc.attrs['created_by'] = 'Antoine Grouazel'
-        subsetcoloc.attrs['purpose'] = 'SAR Hs NN learning/inferences exp#1'
-        subsetcoloc.attrs['purpose'] = 'content SAR & Alti colocations prepared by J.Stopa'
-        subsetcoloc.to_netcdf(outputfile)
-        logging.info('outputfile : %s',outputfile)
-        os.chmod(outputfile,0o0777)
-        logging.info('set permission 777 on output file done')
+    subsetcoloc['py_S'] = xarray.DataArray(np.tile(S.T,(nb_match,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
+    #subsetcoloc['py_S'] = xarray.DataArray(S.T,dims=['time','N'],coords={'time':[datedt_slc],'N':np.arange(20)}) #solution simple
+    #subsetcoloc['py_S'] = subsetcoloc['py_S'].attrs['description']='20 C-WAVE params computed from polar cross spectra 2-tau'
+    return subsetcoloc
+
+def save_training_file(dscoloc_enriched,outputfile):
+    """
+
+    :param dscoloc_enriched: contains py_S and X-spectra from SLC + Hs altimetric
+    :param outputfile:
+    :return:
+    """
+    # 5 ) save a netcdf file
+    dscoloc_enriched.attrs['created_on'] = '%s' % datetime.datetime.today()
+    dscoloc_enriched.attrs['created_by'] = 'Antoine Grouazel'
+    dscoloc_enriched.attrs['purpose'] = 'SAR Hs NN learning/inferences exp#1'
+    dscoloc_enriched.attrs['purpose'] = 'content SAR & Alti colocations prepared by J.Stopa'
+    dscoloc_enriched.to_netcdf(outputfile)
+    logging.info('outputfile : %s',outputfile)
+    os.chmod(outputfile,0o0777)
+    logging.info('set permission 777 on output file done')
 
 
 if __name__ == '__main__' :
@@ -319,9 +246,25 @@ if __name__ == '__main__' :
     #slc = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1b/L1/WV/S1B_WV_SLC__1S/2018/197/S1B_WV_SLC__1SSV_20180716T174520_20180716T180835_011839_015CA3_AA8D.SAFE/measurement/s1b-wv1-slc-vv-20180716t180521-20180716t180524-011839-015ca3-083.tiff'
     #ocn = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1b/L2/WV/S1B_WV_OCN__2S/2018/197/S1B_WV_OCN__2SSV_20180716T174520_20180716T180835_011839_015CA3_D1EE.SAFE/measurement/s1b-wv1-ocn-vv-20180716t180521-20180716t180524-011839-015ca3-083.nc'
     # direct matching multi indices
-    slc = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2018/001/S1A_WV_SLC__1SSV_20180101T132025_20180101T134211_019961_021FEA_C3D7.SAFE/measurement/s1a-wv2-slc-vv-20180101t132040-20180101t132043-019961-021fea-002.tiff'
-    ocn = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2018/001/S1A_WV_OCN__2SSV_20180101T132025_20180101T134211_019961_021FEA_7EBF.SAFE/measurement/s1a-wv2-ocn-vv-20180101t132040-20180101t132043-019961-021fea-002.nc'
-
-    prepare_one_measurement(args.slc,args.ocn,redo=args.redo,dev=args.dev,outputdir=args.outputdir)
+    #slc = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2018/001/S1A_WV_SLC__1SSV_20180101T132025_20180101T134211_019961_021FEA_C3D7.SAFE/measurement/s1a-wv2-slc-vv-20180101t132040-20180101t132043-019961-021fea-002.tiff'
+    #ocn = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2018/001/S1A_WV_OCN__2SSV_20180101T132025_20180101T134211_019961_021FEA_7EBF.SAFE/measurement/s1a-wv2-ocn-vv-20180101t132040-20180101t132043-019961-021fea-002.nc'
+    if args.outputdir:
+        outdir = args.outputdir
+    else:
+        outdir = OUTPUTDIR
+    datedt_slc = datetime.datetime.strptime(os.path.basename(args.slc).split('-')[4],'%Y%m%dt%H%M%S')
+    outputfile = os.path.join(outdir,datedt_slc.strftime('%Y'),
+                              datedt_slc.strftime('%j'),'training_%s.nc' %os.path.basename(args.slc).replace('.tiff',''))
+    logging.info('outputfile : %s',outputfile)
+    if os.path.exists(os.path.dirname(outputfile)) is False :
+        os.makedirs(os.path.dirname(outputfile),0o0775)
+    if os.path.exists(outputfile) and args.redo:
+        os.remove(outputfile)
+    if os.path.exists(outputfile) and args.redo is False:
+        logging.info('nothing to do, the file already exists')
+        sys.exit(0)
+    else:
+        dscoloc_enriched = prepare_one_measurement(args.slc,args.ocn,dev=args.dev)
+        save_training_file(dscoloc_enriched,outputfile)
     logging.info('analysis done in %s seconds',time.time()-t1)
     logging.info('peak memory usage: %s Mbytes',resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024.)

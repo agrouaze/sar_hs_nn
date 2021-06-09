@@ -24,10 +24,12 @@ if __name__ == '__main__':
     prunexe = '/appli/prun/bin/prun'
     # see python /home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/extract_list_days_in_cwaveV4_for_parallel_processing.py --outputdir /home1/datawork/agrouaze/data/sentinel1/cwave/
     listing = '/home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4_consolidated.txt'
-    listing = '/home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4_consolidated_2015.txt'
+    #listing = '/home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4_consolidated_2015.txt'
+    listing = '/home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4_consolidated_2018.txt'
     # call prun
     opts = ' --split-max-lines=75 --name exp1NN --background -e '
-    opts = ' --split-max-lines=5 --name exp1NN --background -e '
+    opts = ' --split-max-lines=5 --name exp1NN --background -e ' # pour 2015
+    opts = ' --split-max-lines=18 --name exp1NN --background -e ' # pour 2018 178086 tiff SLC colocalised
     pbs = '/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/rebuild_training_dataset_exp1.pbs'
     cmd = prunexe+opts+pbs+' '+listing
     logging.info('cmd to cast = %s',cmd)

@@ -9,7 +9,7 @@ import numpy as np
 import glob
 import h5py
 import pandas as pd
-from tqdm import tqdm
+#from tqdm import tqdm
 import os, sys
 import logging
 from sarhspredictor.lib.sarhs import preprocess
@@ -106,7 +106,7 @@ def split_aggregated_ds(file_src,file_dest):
             print(f'Done with {years}')
     print('Done')
 
-def split_aggregated_ds_v2(file_src,file_dest,test2015=False):
+def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
     """
     ma version pcq je pense que ca nest aps une bonne idee de refaire les normalization deja faite dans le training dataset
     :param file_src:
@@ -196,8 +196,8 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False):
             tmpRe = np.swapaxes(tmpRe,1,2)
             tmpIm = fs['cspcIm'][indices,...].squeeze()
             tmpIm = np.swapaxes(tmpIm,1,2)
-            x = np.stack((preprocess.conv_real(tmpRe),
-                          preprocess.conv_imaginary(tmpIm),
+            x = np.stack((preprocess.conv_real(tmpRe,exp_id=1),
+                          preprocess.conv_imaginary(tmpIm,exp_id=1),
                           ),
                          axis=3)
             grp.create_dataset('spectrum',data=x)

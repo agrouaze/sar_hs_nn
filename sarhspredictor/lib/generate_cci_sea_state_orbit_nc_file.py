@@ -8,6 +8,7 @@ example usage:
 export PYTHONPATH=/home1/datahome/agrouaze/git/osm_landmask_distancecoast
 export PYTHONPATH=/home1/datahome/agrouaze/git/swiml2sproc/:$PYTHONPATH
 export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect/:$PYTHONPATH
+export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn:$PYTHONPATH
 python /home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib/generate_cci_sea_state_orbit_nc_file.py --outputdir /tmp/ --redo --cwave-version v3.1 --dev --verbose --safename /home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2021/001/S1A_WV_OCN__2SSV_20210101T053947_20210101T060035_035940_0435AC_E7DD.SAFE/
 """
 
@@ -18,20 +19,25 @@ import os
 import time
 import glob
 import netCDF4
+import pandas as pd
 import traceback
 os.environ["KMP_WARNINGS"] = "FALSE"
 import datetime
 import collections
 import numpy as np
+import uuid
 import pdb
 from shared_information import PROJECT_DIR_DATARMOR,sats_acro,DIR_HS_EMP_CWAVE_CCI,VERSION_CWAVE_CCI
 from produce_list_file_S1 import writeTheFileList
 from sarhspredictor.lib.predict_with_quach2020_on_OCN_using_keras import main_level_1
-from sarhspredictor.lib.load_quach_2020_keras_model import load_quach2020_model_v2
+#from rebuild_training_dataset_exp1 import
+from sarhspredictor.lib.load_quach_2020_keras_model import load_quach2020_model_v2,load_quach2020_model_exp1
 from coastaux.lib import swiml2sproc_utils_ancillary_landmask
 from sarhspredictor.config import land_polygon_path,land_raster_path
 from get_path_from_base_SAFE import get_path_from_base_SAFE
 from swiml2sproc.utils.ancillary.seaice import get_seaice_concentration
+from sarhspredictor.lib.predict_hs_from_SLC import predictions_from_slc_SAFE
+import match_SAFE_L1_L2 # mpc/data_collect
 INPUT_TXT_DIR = '/home1/scratch/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
 INPUT_TXT_DIR = '/home1/datahome/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
 INPUT_TXT_DIR = '/home1/datawork/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
@@ -53,40 +59,45 @@ version_hs_computation = VERSION_CWAVE_CCI
 version_hs_computation = 'v3' # Quach 2020
 version_hs_computation = 'v3.1' #modification to have files nc per SAFE
 units_dates = 'seconds since 2014-04-06 00:00:00'
-# key: values (longname ,type,dimensions,units,descr/longname,vmin,vmax)
+units_dates = 'seconds since 1990-01-01'
+# key: values (long_name ,type,dimensions,units,descr/long_name,vmin,vmax,standard_name)
 variables_infos = {  # ('time','str3')
     #"big_sat_acro" : ("satellite_name",'S3',('time',),'no units','first 3 characters of satellite name',None,None),
     #'big_kcorrup' : ("flag_k_vector_corrupted",'f4',('time',),'no units',
     #                 'flag to indicate if the k vector of original ESA product is corrupted (True) or not (False)',None,
     #                 None),
-    'swh' : ("sea_surface_wave_significant_height",'f8',('time',),'m','C band significant wave height',0,30),
+    'swh' : ("sea_surface_wave_significant_height",'f8',('time',),'m','C band significant wave height',0.,30.,''),
     'swh_uncertainty' : (
-                        'swh_uncertainty','f8',('time',),'m','standard deviation associated to hs :  level of confidence of the NN model ',0,6),
-    'swh_quality':("swh_quality","byte",('time'),"","quality of C band significant wave height measurement","",""),
-    'swh_rejection_flags':('swh_rejection_flags','byte',('time'),'','consolidated instrument and ice flags',"",""),
-    'incidence_angle' : ("incidence_angle",'f8',('time',),'degree','incidence angle of the WV acquisition',22,38),
-    'oswLandFlag':('land_flag','byte',('time'),'','land flag annotated in ESA OCN WV products',0,1),
-    'distance_to_coast':('distance_to_coast','f8',('time'),'km','distance to coast for WV image center using hybrid method raster/polygons openstreemap',0,4000),
-    'platformName':('platform_name','S3',('time'),'','name of the satellite','',''),
-    'lon':('longitude','f8',('time'),'degrees_east','longitude',-180,180),
-    'lat':('latitude','f8',('time'),'degrees_north','latitude',-90,90),
-    'nrcs' : ("sigma0",'f8',('time',),'dB','sigma0 (Normalized Radar Cross Section)',-30,10),
-    'nv' : ("nv",'f8',('time',),'dB','Normalized variance of sigma0',1,3),
-    'wind_speed' : ("wind_speed",'f8',('time',),'m.s-1','wind speed coming from ESA OCN WV product (CMOD-based wind inversion without Bayesian scheme)',0,50),
-    'heading' : ("satellite_heading",'f8',('time',),'degrees',
-                     'satellite heading relative to geographic North in clockwise convention',0,360),
-    #'time':('time','f8',('time'),units_dates,'')
+                        'swh_uncertainty','f8',('time',),'m','standard deviation associated to hs :  level of confidence of the NN model ',0.,6.,''),
+    'swh_quality':("swh_quality","byte",('time'),"","quality of C band significant wave height measurement","","",''),
+    'swh_rejection_flags':('swh_rejection_flags','byte',('time'),'','consolidated instrument and ice flags',"","",''),
+    'angle_of_incidence' : ("angle_of_incidence",'f8',('time',),'degree','incidence angle of the WV acquisition',22.,38.,'angle_of_incidence'),
+    #'oswLandFlag':('land_flag','byte',('time'),'','land flag annotated in ESA OCN WV products',0,1),
+    'distance_to_coast':('distance_to_coast','f8',('time'),'m','distance to nearest coast for WV image center',0.,4000000.),
+    #'platformName':('platform_name','S3',('time'),'','name of the satellite','',''),
+    'lon':('longitude','f8',('time'),'degrees_east','longitude',-180.,180.),
+    'lat':('latitude','f8',('time'),'degrees_north','latitude',-90.,90.),
+    'sigma0' : ("sigma0",'f8',('time',),'dB','sigma0 (Normalized Radar Cross Section)',-30.,10.),
+    'nv' : ("nv",'f8',('time',),'','Normalized variance of digital numbers (complex I+Q values)',1.,3.),
+    'wind_speed' : ("wind_speed",'f8',('time',),'m s-1','wind speed coming from ESA OCN WV product (CMOD-based wind inversion without Bayesian scheme)',0.,50.),
+    'heading' : ("satellite_heading",'f8',('time',),'degree',
+                     'satellite heading relative to geographic North in clockwise convention',0.,360.),
+    'sea_ice_fraction':('sea ice fraction','f8',('time'),'1','',0.,1.,'sea_ice_fraction'),
+    'time':('time','f8',('time'),units_dates,'')
 }
 
 
 
-def read_infos_from_WV_ifremer_archive_v3 ( safename,sato,dev=False ) :
+def read_infos_from_WV_ifremer_archive_v3 ( safename,sato,model,model_version,dev=False ) :
     """
     read OCN L2 WV data and compute on the fly the Hs predicted by NN model
     :args:
         safename (str): basename L2 WV SAFE
         sato (str): S1A
+        model (Keras obj):
+        model_version (str): for instance exp1
     """
+    logging.info('safename : %s',safename)
     measu_list = []
     for ss in [sato] :
         fullsafepath = get_path_from_base_SAFE(safename)
@@ -100,27 +111,28 @@ def read_infos_from_WV_ifremer_archive_v3 ( safename,sato,dev=False ) :
         measu_list = measu_list[0:6]
     logging.info('Nb ocn files to read: %s',len(measu_list))
     if len(measu_list)>0:
-        s1_ocn_wv_ds = main_level_1(measu_list[: :-1],model)
+        if model_version =='exp1':
+            logging.info('start exp1 inferences')
+            full_path_safe_SLC = match_SAFE_L1_L2.getL1SAFEcorrespondingToL2SAFE(fullsafepath,L1_procesing_type='SLC')
+            logging.info('full_path_safe_SLC : %s',full_path_safe_SLC)
+            s1_wv_ds = predictions_from_slc_SAFE(safe_path=full_path_safe_SLC,model=model,dev=dev)
+        else:
+            s1_wv_ds = main_level_1(measu_list[: :-1],model)
     else:
-        s1_ocn_wv_ds = None
-    return s1_ocn_wv_ds
+        s1_wv_ds = None
+    return s1_wv_ds
 
 
-def apply_sea_ice_mask(ds,datedt):
+def apply_sea_ice_mask(ds,datedt,seaice_conc):
     """
 
     :param ds:
     :param datedt: datetime obj
+    :param seaice_conc : float between 0 and 100
     :return:
     """
     #TBD
-    path_arc = os.path.join(arctic_seaice_path.replace('%Y',datedt.strftime('%Y')),datedt.strftime('%Y%m%d')+'.nc')
-    path_ant = os.path.join(antarctic_seaice_path.replace('%Y',datedt.strftime('%Y')),datedt.strftime('%Y%m%d')+'.nc')
-    seaice_conc = get_seaice_concentration(ds['oswLon'].values,
-                             ds['oswLat'].values,
-                             path_arc,
-                             path_ant,
-                             method='bilinear')
+
     seaice_max = 10.
     ind_seaice_detected = seaice_conc>seaice_max
     qualityvals = ds['swh_quality'].values
@@ -243,6 +255,7 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
         redo: (bool)
     """
     logging.debug('add swh_quality')
+    cpt = collections.defaultdict(int)
     qcs = 3*np.ones(len(s1_ocn_wv_ds['oswLon'])).astype(int) # default is good
     # one_std = np.std(s1_ocn_wv_ds['swh_uncertainty'].values)
     # qcs[s1_ocn_wv_ds['swh_uncertainty']<one_std] = 3
@@ -267,7 +280,18 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
     ts = (s1_ocn_wv_ds['time'].values[0] - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
     firstdate_dt = datetime.datetime.utcfromtimestamp(ts)
     logging.info('date_start : %s',date_start)
-    s1_ocn_wv_ds = apply_sea_ice_mask(s1_ocn_wv_ds,firstdate_dt)
+
+    #compute sea ice concentration
+    path_arc = os.path.join(arctic_seaice_path.replace('%Y',firstdate_dt.strftime('%Y')),firstdate_dt.strftime('%Y%m%d') + '.nc')
+    path_ant = os.path.join(antarctic_seaice_path.replace('%Y',firstdate_dt.strftime('%Y')),firstdate_dt.strftime('%Y%m%d') + '.nc')
+    seaice_conc = get_seaice_concentration(s1_ocn_wv_ds['oswLon'].values,
+                                           s1_ocn_wv_ds['oswLat'].values,
+                                           path_arc,
+                                           path_ant,
+                                           method='bilinear')
+    s1_ocn_wv_ds['sea_ice_fraction']= xarray.DataArray(seaice_conc/100.,
+                                dims=s1_ocn_wv_ds['swh_uncertainty'].dims,coords=s1_ocn_wv_ds['swh_uncertainty'].coords)
+    s1_ocn_wv_ds = apply_sea_ice_mask(s1_ocn_wv_ds,firstdate_dt,seaice_conc)
     s1_ocn_wv_ds['swh_rejection_flags'].values = s1_ocn_wv_ds['swh_rejection_flags'].values.astype(
         'u2')  # to have SHORT in netCDF
     s1_ocn_wv_ds['swh_rejection_flags'].values = np.ma.masked_where(s1_ocn_wv_ds['swh_rejection_flags'].values==0,
@@ -275,20 +299,24 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
     #add distance to coast
     landmask,distance_to_coast = swiml2sproc_utils_ancillary_landmask.get_landmask(s1_ocn_wv_ds['oswLon'].values,
                                     s1_ocn_wv_ds['oswLat'].values,land_polygon_path,land_raster_path,debug_figures=False)
-    s1_ocn_wv_ds['distance_to_coast']= xarray.DataArray(distance_to_coast,
+    s1_ocn_wv_ds['distance_to_coast']= xarray.DataArray(distance_to_coast*1000.,
                                 dims=s1_ocn_wv_ds['swh_uncertainty'].dims,coords=s1_ocn_wv_ds['swh_uncertainty'].coords)
     logging.debug('rename')
-    s1_ocn_wv_ds  = s1_ocn_wv_ds.rename({'oswLon':'lon','oswLat':'lat','oswWindSpeed':'wind_speed'})
+    s1_ocn_wv_ds  = s1_ocn_wv_ds.rename({'oswLon':'lon','oswLat':'lat','oswWindSpeed':'wind_speed','nrcs':'sigma0','incidence_angle':'angle_of_incidence'})
     if remove_training_vars:
-        s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['S','cwave','incidence','latlonSARcossin','dxdt','todSAR','oswIncidenceAngle'])
-        s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['oswQualityCrossSpectraRe','satellite','oswK','oswNrcs'])
-        s1_ocn_wv_ds = s1_ocn_wv_ds.drop(['oswQualityCrossSpectraIm','Sdim','cwavedim','dxdtdim','latlondim','incdim',
-                                          'oswAngularBinSize','oswWavenumberBinSize'])
+        all_vars_not_needed = ['S','cwave','incidence','latlonSARcossin','dxdt','todSAR','oswIncidenceAngle',
+                               'oswQualityCrossSpectraRe','satellite','oswK','oswNrcs','oswLandFlag','platformName',
+                               'oswQualityCrossSpectraIm','Sdim','cwavedim','dxdtdim','latlondim','incdim',
+                               'oswAngularBinSize','oswWavenumberBinSize'
+                               ]
+        for vvh in all_vars_not_needed:
+            if vvh in s1_ocn_wv_ds:
+                s1_ocn_wv_ds = s1_ocn_wv_ds.drop(vvh)
     if len(s1_ocn_wv_ds['swh_uncertainty'])>0:
 
         #add var attributes
         for kk in s1_ocn_wv_ds.keys():
-            logging.debug('att start with : %s',kk)
+            logging.info('att start with : %s',kk)
             if s1_ocn_wv_ds[kk].values.dtype=='float32' or s1_ocn_wv_ds[kk].values.dtype=='float64' or s1_ocn_wv_ds[kk].values.dtype=='int':
                 # mask nan elements -> add a fillvalue
                 masked_vals = np.ma.masked_where(np.isnan(s1_ocn_wv_ds[kk].values),s1_ocn_wv_ds[kk].values,copy=True)
@@ -298,21 +326,34 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
             if isinstance(masked_vals,np.ndarray):
                 masked_vals = np.ma.array(masked_vals) #to have a valid fillvalue in netcdf attribut
                 logging.debug('cast du masked : %s',type(masked_vals))
-            s1_ocn_wv_ds[kk] = xarray.DataArray(masked_vals,dims=s1_ocn_wv_ds[kk].dims,coords=s1_ocn_wv_ds.coords)
+            logging.debug('s1_ocn_wv_ds.coords : %s',s1_ocn_wv_ds.coords)
+            logging.debug('dims %s',s1_ocn_wv_ds[kk].dims)
+            if len(s1_ocn_wv_ds[kk].dims)==1:
+                coords_tmp = {'time':s1_ocn_wv_ds.coords['time']}
+            else:
+                coords_tmp = s1_ocn_wv_ds.coords
+            s1_ocn_wv_ds[kk] = xarray.DataArray(masked_vals,dims=s1_ocn_wv_ds[kk].dims,coords=coords_tmp)
             logging.debug('%s %s ',kk,type(s1_ocn_wv_ds[kk].values))
             if kk in variables_infos:
-
-                s1_ocn_wv_ds[kk].attrs['unit'] = variables_infos[kk][3]
-                s1_ocn_wv_ds[kk].attrs['longname'] =variables_infos[kk][4]
+                if variables_infos[kk][3] != "":
+                    s1_ocn_wv_ds[kk].attrs['units'] = variables_infos[kk][3]
+                s1_ocn_wv_ds[kk].attrs['long_name'] =variables_infos[kk][4]
                 s1_ocn_wv_ds[kk].attrs['standard_name'] = variables_infos[kk][0]
-                if kk in ['platformName']:
-                    pass
-                else:
-                    s1_ocn_wv_ds[kk].attrs['vmin'] =variables_infos[kk][5]
-                    s1_ocn_wv_ds[kk].attrs['vmax'] =variables_infos[kk][6]
+                # if kk in ['platformName']:
+                #     pass
+                # else:
+                    #s1_ocn_wv_ds[kk].attrs['vmin'] =variables_infos[kk][5]
+                    #s1_ocn_wv_ds[kk].attrs['vmax'] =variables_infos[kk][6]
+                if variables_infos[kk][5]!="":
+                    s1_ocn_wv_ds[kk].attrs['valid_range'] = (variables_infos[kk][5],variables_infos[kk][6])
                 s1_ocn_wv_ds[kk].attrs['coordinates'] = "lat lon"
-                s1_ocn_wv_ds[kk].attrs['authority'] = "CF 1.7"
-                s1_ocn_wv_ds[kk].attrs['least_significant_digit'] = '3L'
+                s1_ocn_wv_ds[kk].attrs['authority'] = "CF 1.8"
+                if s1_ocn_wv_ds[kk].dtype=='float32' or s1_ocn_wv_ds[kk].dtype=='float64':
+                    s1_ocn_wv_ds[kk].encoding['least_significant_digit'] = 3#'3L'
+                    cpt['least_significant_digit'] +=1
+                else:
+                    cpt['no_least_significant_digit'] += 1
+                logging.debug('s1_ocn_wv_ds[kk].dtyp %s',s1_ocn_wv_ds[kk].dtype)
                 #if 'fill_value' in dir(s1_ocn_wv_ds[kk].values): #je ne comprend pas pourquoi le type des values nest pas updated
                 #    s1_ocn_wv_ds[kk].attrs['_FillValue'] = s1_ocn_wv_ds[kk].values.fill_value
                 if kk in ['swh']:
@@ -323,75 +364,128 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
                     s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "physicalMeasurement"
                     s1_ocn_wv_ds[kk].attrs['band'] = "C"
                 elif kk in 'swh_quality':
-                    s1_ocn_wv_ds[kk].attrs['least_significant_digit'] = '0L'
-                    s1_ocn_wv_ds[kk].attrs['flag_values'] = "0L, 1L, 2L, 3L"
+                    #s1_ocn_wv_ds[kk].encoding['least_significant_digit'] = '0L'
+                    s1_ocn_wv_ds[kk].attrs['flag_values'] = [0,1,2,3]#"0L, 1L, 2L, 3L"
                     s1_ocn_wv_ds[kk].attrs['flag_meanings'] = "undefined bad acceptable good"
                     s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "qualityInformation"
                     s1_ocn_wv_ds[kk].attrs['band'] = "C"
+                elif kk in 'sea_ice_fraction':
+                    s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "auxiliaryInformation"
+                    s1_ocn_wv_ds[kk].attrs['institution'] = "ESA"
+                    s1_ocn_wv_ds[kk].attrs['source'] = "CCI Sea Ice"
+                    s1_ocn_wv_ds[kk].encoding['least_significant_digit'] = 2
+                    s1_ocn_wv_ds[kk].attrs['source_files'] = [os.path.basename(path_arc),os.path.basename(path_ant)]
                 elif kk in 'swh_rejection_flags':
-                    s1_ocn_wv_ds[kk].attrs['least_significant_digit'] = '0L'
-                    s1_ocn_wv_ds[kk].attrs['flag_masks'] = "1L, 2L, 4L, 8L, 16L, 32L, 64L, 128L"
+                    #s1_ocn_wv_ds[kk].encoding['least_significant_digit'] = '0L'
+                    s1_ocn_wv_ds[kk].attrs['flag_masks'] = [1,2,4,8,16,32,64,128] #"1L, 2L, 4L, 8L, 16L, 32L, 64L, 128L"
                     #s1_ocn_wv_ds[kk].attrs['flag_meanings'] = "nb_of_valid_swh_too_low swh_validity not_water sea_ice sigma0_validity waveform_validity swh_rms_outlier swh_outlier"
                     s1_ocn_wv_ds[kk].attrs['flag_meanings'] = "nv_greater_than_max_nv swh_outlier invalid_value wind_below_2_m_per_sec not_water"
                     s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "qualityInformation"
                     s1_ocn_wv_ds[kk].attrs['band'] = "C"
+                    #del s1_ocn_wv_ds[kk].attrs['units']
+                    #del s1_ocn_wv_ds[kk].attrs['valid_range']
                     #s1_ocn_wv_ds[kk].attrs['_FillValue'] = -32768
+                elif kk in 'distance_to_coast':
+                    s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "auxiliaryInformation"
+                    s1_ocn_wv_ds[kk].encoding['_FillValue'] = 1.e20
+                    s1_ocn_wv_ds[kk].attrs['institution'] = 'OpenStreetMap'
+                    s1_ocn_wv_ds[kk].attrs['source'] = "Openstreetmap v2016 : using hybrid method raster/polygons"
+                    del s1_ocn_wv_ds[kk].attrs['standard_name']
+                elif kk in 'sigma0':
+                    s1_ocn_wv_ds[kk].attrs['coverage_content_type'] = "physicalMeasurement"
+                elif kk in 'angle_of_incidence':
+                    s1_ocn_wv_ds[kk].encoding['_FillValue'] = 1.e20
 
 
 
                 logging.debug('attrb for %s added: %s',kk,s1_ocn_wv_ds[kk].attrs)
-            elif kk in ['time']:
-                s1_ocn_wv_ds[kk].attrs['longname'] = "start time of the WV acquisition (lasts less than 3 seconds for one image)"
+            #elif kk in ['time']:
+
             else:
                 logging.debug('no att for %s',kk)
+        #time configuration
+        s1_ocn_wv_ds['time'].attrs[
+            'long_name'] = "start time of the WV acquisition (lasts less than 3 seconds for one image)"
+        s1_ocn_wv_ds['time'].encoding['units'] = variables_infos['time'][3]
+        s1_ocn_wv_ds['time'].encoding['_FillValue'] = -2147483648.
+        s1_ocn_wv_ds['time'].attrs["axis"] = "T"
+        s1_ocn_wv_ds['time'].attrs["standard_name"] = "time"
+        s1_ocn_wv_ds['time'].attrs["long_name"] = "measurement time"
+        #longitude
+        s1_ocn_wv_ds['lon'].attrs["axis"] = "X"
+        s1_ocn_wv_ds['lon'].encoding["_FillValue"] = 1.e+20
+        #latitude
+        s1_ocn_wv_ds['lat'].attrs["axis"] = "Y"
+        s1_ocn_wv_ds['lat'].encoding["_FillValue"] = 1.e+20
+        lami = s1_ocn_wv_ds['lat'].min().values
+        lama = s1_ocn_wv_ds['lat'].max().values
+        lomi = s1_ocn_wv_ds['lon'].min().values
+        loma = s1_ocn_wv_ds['lon'].max().values
+        # https://gis.stackexchange.com/questions/237116/sentinel-1-relative-orbit#:~:text=You%20actually%20can%20find%20the,%2D%2073%2C%20175)%20%2B%201
+        #Sentinel-1A Relative Orbit Number = mod (Absolute Orbit Number orbit - 73, 175) + 1,
+        #Sentinel-1B Relative Orbit Number = mod (Absolute Orbit Number orbit - 27, 175) + 1
+        absOrbitNum = int(os.path.basename(safename).split('_')[7])
+        if 'S1A' in safename:
+            relOrNum = (absOrbitNum-73)%175+1
+        elif 'S1B' in safename:
+            relOrNum = (absOrbitNum - 27) % 175 + 1
+        else:
+            raise Exception('unreferenced platform S1 (relative orbit number computation')
         globatt = {
             'institution' : 'University of Hawaii , Laboratory of Physical and Spatial Oceanography  Institut Français pour la Recherche et l Exploitation de la MER, European Space Agency',
-            'institution_abbreviation' : 'UH , LOPS-IFREMER, ESA',
-            'publisher_name' : "ifremer/LOPS",
-            'publisher_url' : "https://www.umr-lops.fr/",
-            'publisher_email' : "lops-siam@listes.ifremer.fr",
-            'PIs' : 'Justin Stopa, Alexis Mouche',
+            'institution_abbreviation' : 'UH, Ifremer-LOPS, ESA',
+            'publisher_name' : "cersat",
+            'publisher_url' : "cersat.ifremer.fr",
+            'publisher_email' : "cersat@ifremer.fr",
+            'publisher_institution' : 'Ifremer / Cersat',
+            #'PIs' : 'Justin Stopa, Alexis Mouche',
             #'reference paper' : 'Stopa, Mouche JGR oceans 2017 https://doi.org/10.1002/2016JC012364',
-            'reference paper': 'Quach et al 2020 https://authors.library.caltech.edu/104562/1/09143500.pdf',
+            #'reference paper': 'Quach et al 2020 https://authors.library.caltech.edu/104562/1/09143500.pdf',
             #'incidence_angle' : wv,
-            'version of NN model' : cwave_version,
-            'time_coverage_start' : str(s1_ocn_wv_ds['time'].min().values), #"2017-01-01T00:28:08Z" ;             #new att like cerbere
-            'time_coverage_end' : str(s1_ocn_wv_ds['time'].max().values),
+            #'version of NN model' : cwave_version,
+            'time_coverage_start' :pd.to_datetime(str( s1_ocn_wv_ds['time'].min().values)).strftime('%Y-%m-%dT%H:%M:%SZ'), #"2017-01-01T00:28:08Z" ;             #new att like cerbere
+            'time_coverage_end' : pd.to_datetime(str(s1_ocn_wv_ds['time'].max().values)).strftime('%Y-%m-%dT%H:%M:%SZ'),
             'Conventions' : "CF-1.7, ACDD-1.3, ISO 8601" ,
-            'title' : "ESA CCI Sea State L2 ESA OCN from Sentinel-1",
-            'id' : "ESACCI-SEASTATE-L2P-SWH-Sentinel1" ,
+            'title' : "ESA CCI Sea State L2P derived from Sentinel-1 Wave Mode, using Quach et al., 2020", #"ESA CCI Sea State L2 ESA OCN from Sentinel-1",
+            'id' : "ESACCI-SEASTATE-L2P-SWH--Sentinel-%s-WV-QUACH2020"%os.path.basename(filout).split('-')[5], #"ESACCI-SEASTATE-L2P-SWH-Sentinel1" ,
             #'institution = "Institut Francais de Recherche pour l\'Exploitation de la mer / CERSAT, European Space Agency" ;
-            'source' : "CCI Sea State Sentinel-1 statistical Hs Processor",
+            'source' : "CCI Sea State Sentinel-1 Quach et al 2020 Statistical Hs Processor",
             'history' : "%s - Creation"%datetime.datetime.today().strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'references' : "CCI Sea State Product Specification Document (PSD), v1.1",
+            'references' : ["CCI Sea State Product Specification Document (PSD), v2","Quach et al 2020 https://authors.library.caltech.edu/104562/1/09143500.pdf"],
             'product_version' : "1.0",
-            'summary' : "This dataset contains significant wave height measurements from Sentinel-1 SAR" ,
+            'summary' : "This dataset contains significant wave height measurements from Sentinel-1 SAR, using Quach 2020" ,
             'keywords' : ("Oceans > Ocean Waves > Significant Wave Height", "Oceans > Ocean Waves > Sea State"),
             'keywords_vocabulary' : "NASA Global Change Master Directory (GCMD) Science Keywords",
             'naming_authority' : "fr.ifremer.cersat" ,
             'cdm_data_type' : "trajectory",
             'featureType' : "trajectory" ,
-            'comment' : "These data were produced at ESACCI as part of the ESA SST CCI project.",
-            'creator_name' : "ifremer/LOPS" ,
-            'creator_url' : "https://www.umr-lops.fr/" ,
-            'creator_email' : "lops-siam@listes.ifremer.fr" ,
-            'creator_institution' : "Ifremer / LOPS" ,
+            'comment' : "These data were produced at Ifremer as part of the ESA SST CCI project.",
+            'creator_name' : "Justin Stopa, Alexis Mouche" ,
+            'creator_url' : ["https://www.soest.hawaii.edu/ore/","https://www.umr-lops.fr/"] ,
+            'creator_email' : ["stopa@hawaii.edu","alexis.mouche@ifremer.fr"] ,
+            'creator_institution' : ["Ifremer / LOPS","University of Hawaii / SOEST / Ocean and Resources Engineering Dpt."] ,
             'project' : "Climate Change Initiative - European Space Agency" ,
-            'geospatial_lat_min' : -80. ,
-            'geospatial_lat_max' : 80. ,
+            'geospatial_lat_min' : lami,
+            'geospatial_lat_max' : lama ,
             'geospatial_lat_units' : "degree_north" ,
-            'geospatial_lon_min' : -180. ,
-            'geospatial_lon_max' : 180. ,
+            'geospatial_lon_min' : lomi,
+            'geospatial_lon_max' : loma ,
             'geospatial_lon_units' : "degree_east" ,
-            'standard_name_vocabulary' : "NetCDF Climate and Forecast (CF) Metadata Convention version 1.7" ,
+            'geospatial_bounds':"POLYGON((%s %s,%s %s,%s %s,%s %s,%s %s))"%(lomi,lami,lomi,lama,loma,lama,loma,lami,lomi,lami),
+            'standard_name_vocabulary' : "NetCDF Climate and Forecast (CF) Metadata Convention version 1.8" ,
             'license' : "ESA CCI Data Policy: free and open access" ,
-            'platform' : "Sentinel-1" ,
+            'platform' : "Sentinel-1 %s"%os.path.basename(filout).split('-')[5][-1] ,
             'platform_type' : "low earth orbit satellite" ,
-            'platform_vocabulary' : "CCI" ,
+            'platform_vocabulary' : "CEOS" ,
             'instrument' : "C-band SAR" ,
             'instrument_type' : "SAR (Synthetic Aperture Radar)" ,
-            'instrument_vocabulary' : "CCI" ,
-            'spatial_resolution' : "20x20 km" ,
+            'instrument_vocabulary' : "CEOS" ,
+            "acquisition_mode": "wave mode",
+            'spatial_resolution' : "20 km" ,
+            'cycle_number':'',
+            'relative_pass_number':'%s'%relOrNum,
+            'equator_crossing_time':'',
+            'equator_crossing_longitude':'',
             'netcdf_version_id' : "%s"%netCDF4.__version__,
             'acknowledgement' : "Please acknowledge the use of these data with the following statement: these data were obtained from the ESA CCI Sea State project" ,
             'format_version' : "Data Standards v2.1" ,
@@ -401,10 +495,11 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
             'key_variables' : "swh" ,
             'date_created' : datetime.datetime.today().strftime('%Y-%m-%dT%H:%M:%SZ'),
             'date_modified' : datetime.datetime.today().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'track_id':"%s"%uuid.uuid4(),
             'band' : "C" ,
-            'source_version' : cwave_version ,
-            'source_product': safename,
-            'input' : "Level-2 ESA WV OCN products" ,
+            'source_version' : "Quach 2020 / v3.1" ,
+            #'source_product': safename,
+            'input' : "Level-2 ESA WV OCN products: %s"%safename ,
             'Metadata_Conventions' : "Climate and Forecast (CF) 1.7, Attribute Convention for Data Discovery (ACDD) 1.3" ,
             'geospatial_vertical_units' : "meters above mean sea level" ,
             'geospatial_vertical_positive' : "up"
@@ -414,18 +509,19 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
             s1_ocn_wv_ds.attrs[kki] = globatt[kki]
         float_fillvalue = netCDF4.default_fillvals['f8']
 
-        encoding = {'lat' : {'zlib' : False,'_FillValue' : False},
-                    'lon' : {'zlib' : False,'_FillValue' : False},
-                    'swh_rejection_flags' : {'_FillValue' : -32768,'dtype':'u2'},
-                    'incidence_angle' : {'_FillValue' : float_fillvalue},
+        encoding = {'lat' : {'zlib' : False,'_FillValue' : 1.e+20},
+                    'lon' : {'zlib' : False,'_FillValue' : 1.e+20},
+                    'swh_rejection_flags' : {'dtype':'u2'}, #'_FillValue' : -32768,
+                    #'incidence_angle' : {'_FillValue' : float_fillvalue},
                     'wind_speed' : {'_FillValue' : float_fillvalue},
-                    'nrcs' : {'_FillValue' : float_fillvalue},
+                    'sigma0' : {'_FillValue' : float_fillvalue},
                     'nv' : {'_FillValue' : float_fillvalue},
                     'heading' : {'_FillValue' : float_fillvalue},
                     'swh' : {'_FillValue' : float_fillvalue},
                     'swh_uncertainty' : {'_FillValue' : float_fillvalue},
-                    'swh_quality' : {'_FillValue' : 0},
+                    'swh_quality' : {'_FillValue' : 0,'dtype':np.ubyte},
                     'distance_to_coast' : {'_FillValue' : float_fillvalue},
+                    'sea_ice_fraction':{'_FillValue' : float_fillvalue}
                     }
         s1_ocn_wv_ds.to_netcdf(filout,encoding=encoding)
         logging.info('done! output : %s',filout)
@@ -433,10 +529,11 @@ def write_netcdf_file_xarray ( s1_ocn_wv_ds,filout,cwave_version,redo=True ,remo
     else :
         logging.info('there is no hs total SAR for this day and this satellite %s',filout)
         status = 'nodata'
+    logging.info('stats : %s',cpt)
     return status
 
 
-def process_one_orbit_v2 ( safename,args ) :
+def process_one_orbit_v2 ( safename,model,args ) :
     """
     wrapper of the different methods
     version 2: skip txt files and compute the Hs total directly from netCDF ESA OCN
@@ -465,13 +562,14 @@ def process_one_orbit_v2 ( safename,args ) :
     if os.path.exists(dira) is False :
         os.makedirs(dira,0o0755)
         logging.info('make dir %s',dira)
-    if os.path.exists(filout) and args.redo == True :
+    if os.path.exists(filout) and args.redo is True :
         os.remove(filout)
-    if os.path.exists(filout) and args.redo == False :
+    if os.path.exists(filout) and args.redo is False :
         status = 'already_in'
+        logging.info('output file already exists')
     else :
         logging.info('outputdir = %s',outputdir)
-        final_ds = read_infos_from_WV_ifremer_archive_v3(safename,sat,dev=args.dev)
+        final_ds = read_infos_from_WV_ifremer_archive_v3(safename,sat,model=model,model_version=args.model_version,dev=args.dev)
         if final_ds is not None:
             logging.debug('%s',final_ds.keys())
             logging.debug('%s',final_ds.count())
@@ -495,10 +593,12 @@ if __name__ == '__main__' :
     parser.add_argument('--verbose',action='store_true',default=False)
     parser.add_argument('--outputdir',default=None,help='folder where the data will be written [optional]',
                         required=False)
-    parser.add_argument('--safename',required=True,help=' .SAFE to process',type=str)
+    parser.add_argument('--safename',required=True,help=' L2 .SAFE to process',type=str)
     #parser.add_argument('--wv',required=True,help='wv1 or wv2...',type=str)
     parser.add_argument('--redo',action='store_true',default=False,help='redo existing files nc')
     parser.add_argument('--cwave-version',required=True,help='example  v1.2')
+    parser.add_argument('--model_version',required=False,
+            help='[optional , default is the model trained by P. Sadowsky in feb 2021], possible model exp1 ...')
     parser.add_argument('--dev',action='store_true',default=False,help='dev/test mode only 2 wv measu treated in a day')
     args = parser.parse_args()
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
@@ -509,7 +609,13 @@ if __name__ == '__main__' :
         logging.basicConfig(level=logging.INFO,format=fmt,
                             datefmt='%d/%m/%Y %H:%M:%S')
     #     datedt = datetime.datetime(2017,1,25,)
-    model = load_quach2020_model_v2() #heteroskedastik 2017 for format validation before final model release from Hawaii team
+    if args.model_version is None:
+        model = load_quach2020_model_v2() #heteroskedastik 2017 for format validation before final model release from Hawaii team
+    elif args.model_version=='exp1':
+        logging.info('load model NN from experiment #1')
+        model = load_quach2020_model_exp1()
+    else:
+        raise Exception('unknown model')
     cptu = collections.defaultdict(int)
 
     t0 = time.time()
@@ -517,7 +623,7 @@ if __name__ == '__main__' :
         inputsafepath = args.safename[0:-1]
     else:
         inputsafepath = args.safename
-    status,final_df = process_one_orbit_v2(os.path.basename(inputsafepath),args)
+    status,final_df = process_one_orbit_v2(os.path.basename(inputsafepath),model,args)
     cptu[status] += 1
     elapsed = datetime.timedelta(seconds=(time.time() - t0))
     logging.info('time to write one file = %s',elapsed)

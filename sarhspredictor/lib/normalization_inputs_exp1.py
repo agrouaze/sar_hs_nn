@@ -156,11 +156,11 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                     tmpim = src['crossSpectraImPol'].values.squeeze()
                     tmpim = np.swapaxes(tmpim,1,2)
                     logging.debug('tmpre : %s',tmpre.shape)
-                    re = preprocess.conv_real(tmpre)
-                    im = preprocess.conv_imaginary(tmpim)
+                    re = preprocess.conv_real(tmpre,exp_id=1)
+                    im = preprocess.conv_imaginary(tmpim,exp_id=1)
                     x = np.stack((re, im), axis=3)
                     logging.debug('spectrum : %s',x.shape)
-                    fd.create_dataset('spectrum', data=x)
+                    fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
 
                     # Altimeter features.
                     hsALT = src['hsALT'].values

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #PBS -l walltime=06:00:05
-#PBS -l mem=15gb
+#PBS -l mem=19gb
 #PBS -N exp1NN
 #PBS -m n
 echo "Hello ${1}"
+# parallelisation a 60 sur datarmor avec 1 compte 19Go RAM et 06h par sub job de 18 tiff (6h ca fait bcp)
 #version pour exploit airflow PRUN daily computation with user satwave
 myvariable=$(whoami)
 
@@ -16,12 +17,14 @@ export PYTHONPATH=/home1/datahome/agrouaze/git/calval_cfo_scat/cfoscatcalval
 export PYTHONPATH=/home1/datahome/agrouaze/git/calval_cfo_scat/:$PYTHONPATH
 export PYTHONPATH=/home1/datahome/agrouaze/git/xsarseafork/src/xsarsea:$PYTHONPATH
 export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn:$PYTHONPATH
+export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib:$PYTHONPATH
+export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect/:$PYTHONPATH
 #else
 #  pybin=/home1/datawork/agrouaze/conda_envs2/envs/xsarQuach2020/bin/python
 #  export PYTHONPATH=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/cfoscatcalval
 #  export PYTHONPATH=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/:$PYTHONPATH
 #  pyexe=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/cfoscatcalval/src/MLE_aggregation_per_day_L2B.py
 #fi
-$pybin $pyexe --slc ${1} --ocn ${2}
+$pybin $pyexe --slc ${1} --ocn ${2} --redo
 echo end of python script exe
 exit 0

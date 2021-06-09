@@ -16,7 +16,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model, load_model
 import tensorflow.keras as keras
 from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017,\
-    model_IFR_replication_quach2020_sadowski_release_5feb2021,model_IFR_replication_quach2020_sadowski_release_5feb2021_v2
+    model_IFR_replication_quach2020_sadowski_release_5feb2021,model_IFR_replication_quach2020_sadowski_release_5feb2021_v2,\
+    model_exp1
 print('keras',keras.__version__)
 print('tensorflow',tf.__version__)
 print()
@@ -74,6 +75,17 @@ def load_quach2020_model_v2():
     """
     #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
     file_model = model_heteroskedastic_2017
+    custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
+    model = load_model(file_model, custom_objects=custom_objects)
+    return model
+
+def load_quach2020_model_exp1():
+    """
+
+    :return:
+    """
+    #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+    file_model = model_exp1
     custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
     model = load_model(file_model, custom_objects=custom_objects)
     return model

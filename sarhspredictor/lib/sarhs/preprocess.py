@@ -25,7 +25,7 @@ def _conv_deg(in_angle, is_inverse=False, in_cos=None, in_sin=None):
     angle = np.deg2rad(in_angle)
     return (np.cos(angle), np.sin(angle))
 
-def conv_real(x):
+def conv_real(x,exp_id=None):
     """Scales real part of spectrum.
     Args:
         real: numpy array of shape (notebooks, 72, 60)
@@ -34,10 +34,18 @@ def conv_real(x):
     """
     assert len(x.shape) == 3
     assert x.shape[1:] == (72, 60)
-    x = (x - 8.930369) / 41.090652 
+    if exp_id is None:
+        x = (x - 8.930369) / 41.090652
+    elif exp_id==1:
+        #x = x / 1150179.354676391 # le min etant en e-30 je me permet de ne pas le remettre a zero (tested in stats_dataset_training_exp1.ipynb)
+        #x = x / 266297713.37484202
+        x = x /268312468.14585936
+    else:
+        raise Exception('unkown exp_id %s'%exp_id)
+
     return x
 
-def conv_imaginary(x):
+def conv_imaginary(x,exp_id=None):
     """Scales imaginary part of spectrum.
     Args:
         real: numpy array of shape (notebooks, 72, 60)
@@ -46,7 +54,14 @@ def conv_imaginary(x):
     """
     assert len(x.shape) == 3
     assert x.shape[1:] == (72, 60)
-    x = (x - 4.878463e-08) / 6.4714637
+    if exp_id is None :
+        x = (x - 4.878463e-08) / 6.4714637
+    elif exp_id == 1: #evaluate in stats_dataset_training_exp1.ipynb
+        #x = x / 330446.8692954672  # le min etant en e-30 je me permet de ne pas le remettre a zero
+        x = x/6605101.291873287
+    else :
+        raise Exception('unkown exp_id %s' % exp_id)
+
     return x
  
 
