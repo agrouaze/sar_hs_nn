@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 import math
 from tensorflow.keras.utils import Sequence
-    
+import logging
 class SARGenerator(Sequence):
     """
     Generator to be passed to fit_generator, predict_generator, etc. using Keras interface.
@@ -56,7 +56,8 @@ class SARGenerator(Sequence):
             self.igroup2group[i] = g
             self.idx2igroup[count:count+n] = i
             self.idx2inbatchidx[count:count+n] = np.arange(0, n, dtype=int)
-        
+            logging.info('correction apllied')
+            count += n #correction to use also 2017 agrouaze June 2021
         return
     
     def __len__(self):
@@ -106,7 +107,7 @@ class SARGenerator(Sequence):
             assert not np.any(target > 100), target
         else:
             target = None
-        
+        logging.info('spectrum : %s',spectrum.shape)
         inputs = [spectrum, features]
         outputs = target
         return inputs, outputs

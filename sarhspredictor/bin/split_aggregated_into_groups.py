@@ -81,8 +81,8 @@ def split_aggregated_ds(file_src,file_dest):
             lonSARcossin = preprocess.conv_position(lonSAR)
             grp.create_dataset('latlonSAR',data=np.column_stack([latSAR,lonSAR]))
             grp.create_dataset('latlonSARcossin',data=np.hstack([latSARcossin,lonSARcossin]))
-
-            timeSAR = fs['timeSAR'][indices]
+            logging.info('taille timeSAR %s indices : %s elem : %s',fs['timeSAR'][:].shape,indices.shape,indices.sum())
+            timeSAR = fs['timeSAR'][:].squeeze()[indices]
             todSAR = preprocess.conv_time(timeSAR)
             grp.create_dataset('timeSAR',data=timeSAR,shape=(timeSAR.shape[0],1))
             grp.create_dataset('todSAR',data=todSAR,shape=(todSAR.shape[0],1))
@@ -94,7 +94,7 @@ def split_aggregated_ds(file_src,file_dest):
             grp.create_dataset('satellite',data=satellite,shape=(satellite.shape[0],1))
 
             # Altimeter
-            hsALT = fs['hsALT'][indices]
+            hsALT = fs['hsALT'][:].squeeze()[indices]
             grp.create_dataset('hsALT',data=hsALT,shape=(hsALT.shape[0],1))
 
             # Get spectral data.
@@ -113,43 +113,71 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
     :param file_dest:
     :return:
     """
-    #groups = {'2015_2016' : [2015,2016],'2017' : [2017],'2018' : [2018]}
-    groups = {'group_1':[1,2,3,4,5,6],'group_2':[7,8,9],'group_3':[10,11,12]} # for dev on exp1 I only have 2015 for now
+    logging.info('start splitting into groups')
+    groups = {'2015_2016' : [2015,2016],'2017' : [2017],'2018' : [2018]}
+    #groups = {'group_1':[1,2,3,4,5,6],'group_2':[7,8,9],'group_3':[10,11,12]} # for dev on exp1 I only have 2015 for now
     # Print fields of source file.
     with h5py.File(file_src,'r') as f :
         for k in [k for k in f.keys()] :
-            print('k',k)
+            logging.debug('k',k)
             #print(f'{k}: {f[k].dtype}')
-    print('start creating the final .h5 file')
+    logging.info('start creating the final .h5 file')
     # Create h5.
     with h5py.File(file_src,'r') as fs,h5py.File(file_dest,'w') as fd :
-        #for group_name,years in groups.items() :
-        for group_name,months in groups.items() :
-            logging.info('group_name: %s months: %s',group_name,months)
+        for group_name,years in groups.items() :
+        #for group_name,months in groups.items() :
+            logging.info('group_name: %s years: %s',group_name,years)
+            #logging.info('group_name: %s months: %s',group_name,months)
             grp = fd.create_group(group_name)
 
             if test2015:
+                months =[] #to remove if test only on 2015 months
                 # Find examples of the specified months.
                 indices = np.zeros_like(fs['month'][:],dtype='bool')
                 logging.info('month val :%s %s',fs['month'].shape,fs['month'][0].dtype)
                 for month in months :
                     indices = np.logical_or(fs['month'][:] == month,indices)
-                    print('indices',month,indices.shape,indices.sum())
+                    logging.info('indices %s %s %s',month,indices.shape,indices.sum())
             else:
-                years = []# to remove for dataset on many years
+                #years = []# to remove for dataset on many years
                 # Find examples of the specified years.
                 indices = np.zeros_like(fs['year'][:],dtype='bool')
                 for year in years :
                     indices = np.logical_or(fs['year'][:] == year,indices)
-                    print('indices',year,indices.shape,indices.sum())
+                    logging.info('indices %s %s %s',year,indices.shape,indices.sum())
             # Find examples that don't have nans.
             indices[np.any(np.isnan(fs['py_S'][:]),axis=1)] = 0
             indices[np.isnan(fs['sigma0'][:])] = 0
             indices[np.isnan(fs['normalizedVariance'][:])] = 0
+            #I add other features because in 2017 it crash the learning (agrouaze June 2021)
+            logging.info('assert that no NaN in high level features!! indices before : %s',indices.sum())
+            indices[np.isnan(fs['latSAR'][:])] = 0
+            logging.info('indices sum after lat : %s',indices.sum())
+            indices[np.isnan(fs['lonSAR'][:])] = 0
+            logging.info('indices sum after lon : %s',indices.sum())
+            indices[np.isnan(fs['incidenceAngle'][:])] = 0
+            logging.info('indices sum after inc : %s',indices.sum())
+            indices[np.isnan(fs['dx'][:])] = 0
+            logging.info('indices sum after dx : %s',indices.sum())
+            indices[np.isnan(fs['dt'][:])] = 0
+            logging.info('indices sum after dt : %s',indices.sum())
+            indices[np.isnan(fs['timeSAR'][:].squeeze())] = 0
+            logging.info('indices sum after time : %s',indices.sum())
+            indices[np.isnan(fs['todSAR'][:].squeeze())] = 0
+            logging.info('indices sum after tod : %s',indices.sum())
+            indices[np.isnan(fs['satellite'][:].squeeze())] = 0
+            logging.info('indices sum after sat : %s',indices.sum())
+            indices[np.isnan(fs['hsALT'][:].squeeze())] = 0
+            logging.info('indices sum after hsalt : %s',indices.sum())
+            logging.info('cspcIm shape : %s',fs['cspcIm'][:].shape)
+            indices[np.any(np.any(np.isnan(fs['cspcIm'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Im : %s',indices.sum())
+            indices[np.any(np.any(np.isnan(fs['cspcRe'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Re : %s',indices.sum())
             # Done
             num_examples = indices.sum()
-            #print(f'Found {num_examples} events from years: ',years)
-            print(f'Found {num_examples} events from months: ',months)
+            logging.info('Found %s events from years: %s ',num_examples,years)
+            #print(f'Found {num_examples} events from months: ',months)
 
             # Write data from this year.
             # print(fs['year'][indices].shape)
@@ -173,7 +201,7 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             lonSARcossin = preprocess.conv_position(lonSAR)
             grp.create_dataset('latlonSAR',data=np.column_stack([latSAR,lonSAR]))
             grp.create_dataset('latlonSARcossin',data=np.hstack([latSARcossin,lonSARcossin]))
-            print('timeSAR',fs['timeSAR'].shape)
+            #print('timeSAR',fs['timeSAR'].shape)
             timeSAR = fs['timeSAR'][:].squeeze()[indices]
             #todSAR = preprocess.conv_time(timeSAR)
             todSAR = fs['todSAR'][:].squeeze()[indices]
@@ -193,14 +221,15 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             # Get spectral data.
             logging.info('fs[cspcRe] : %s',fs['cspcRe'].shape)
             tmpRe = fs['cspcRe'][indices,...].squeeze()
-            tmpRe = np.swapaxes(tmpRe,1,2)
+            #tmpRe = np.swapaxes(tmpRe,1,2)
             tmpIm = fs['cspcIm'][indices,...].squeeze()
-            tmpIm = np.swapaxes(tmpIm,1,2)
+            #tmpIm = np.swapaxes(tmpIm,1,2)
+            logging.info('tmpIm : %s',tmpIm.shape)
             x = np.stack((preprocess.conv_real(tmpRe,exp_id=1),
                           preprocess.conv_imaginary(tmpIm,exp_id=1),
                           ),
                          axis=3)
             grp.create_dataset('spectrum',data=x)
-            print(f'Done with {months}')
-            #print(f'Done with {years}')
-    print('Done')
+            #print(f'Done with {months}')
+            logging.info('Done with %s',years)
+    logging.info('Done')

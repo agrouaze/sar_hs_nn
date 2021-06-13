@@ -10,18 +10,21 @@ import datetime
 import logging
 import time
 import tensorflow as tf
+from tensorboard.plugins.hparams import api as hp
 from tensorflow.keras.utils import Sequence, plot_model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import ReduceLROnPlateau,EarlyStopping,ModelCheckpoint,TensorBoard
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import MaxPooling2D,Conv2D,GlobalMaxPooling2D,Dense,Dropout,Input,concatenate,Flatten,LSTM,Conv1D,MaxPooling1D
-from sarhspredictor.config import model_IFR_replication_quach2020_sadowski_release_5feb2021
+from sarhspredictor.config import model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1
 from sarhspredictor.lib.sarhs.generator import SARGenerator
 from sarhspredictor.lib.sarhs.heteroskedastic import Gaussian_NLL, Gaussian_MSE
-
-
-def define_model () :
+MSE_metric = tf.keras.metrics.MeanSquaredError(name="mean_squared_error", dtype=None)
+MAE_metric = tf.keras.metrics.MeanAbsoluteError(name="mean_absolute_error", dtype=None)
+MAPE_metric = tf.keras.metrics.MeanAbsolutePercentageError(name="mean_absolute_percentage_error", dtype=None)
+COSI_SIMI = tf.keras.metrics.CosineSimilarity(name="cosine_similarity", dtype=None, axis=-1)
+def define_model (drop_out=0.5) :
     # Low-level features.
     inputs = Input(shape=(72,60,2))
     x = Conv2D(64,(3,3),activation='relu')(inputs)
@@ -37,7 +40,7 @@ def define_model () :
     x = Dense(256,activation='relu')(x)
     # x = Dropout(0.5)(x)
     x = Dense(256,activation='relu')(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(drop_out)(x)
     cnn = Model(inputs,x)
 
     # High-level features.
@@ -55,25 +58,24 @@ def define_model () :
     x = Dense(units=256,activation='relu')(x)
     # x = Dropout(0.5)(x)
     x = Dense(units=256,activation='relu')(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(drop_out)(x)
     ann = Model(inputs=inp,outputs=x)
 
     # Combine
     combinedInput = concatenate([cnn.output,ann.output])
     x = Dense(256,activation="relu")(combinedInput)
-    x = Dropout(0.5)(x)
+    x = Dropout(drop_out)(x)
     x = Dense(256,activation="relu",name='penultimate')(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(drop_out)(x)
     x = Dense(2,activation="softplus",name='output')(x)
     model = Model(inputs=[cnn.input,ann.input],outputs=x)
     return model
 
-def start_training():
+def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=None,save_model=False,hparams=None,checkPointModelSave=None):
 
     # Train
-
-    batch_size = 128
-    tblogdir = os.path.join('/home1/scratch/agrouaze/tmp/',
+    if tblogdir is None:
+        tblogdir = os.path.join('/home1/scratch/agrouaze/tmp/',
                             'exp_1_hs_wv_slc')
     if os.path.exists(tblogdir) is False :
         logging.info('logdir_tensorboard : %s doesnt exist',tblogdir)
@@ -92,10 +94,15 @@ def start_training():
         update_freq='epoch')
 
     # file_model = '/home1/scratch/agrouaze/heteroskedastic_2017_agrouaze.h5'
-    file_model = model_IFR_replication_quach2020_sadowski_release_5feb2021  #
-    print(file_model)
-    model = define_model()
-    model.compile(loss=Gaussian_NLL,optimizer=Adam(lr=0.0001),metrics=[Gaussian_MSE])
+    if checkPointModelSave is None:
+        file_model_check_point = model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1  #
+    else:
+        file_model_check_point = checkPointModelSave
+    print(file_model_check_point)
+    model = define_model(drop_out=drop_out)
+    model.compile(loss=Gaussian_NLL,optimizer=Adam(lr=learning_rate),metrics=[Gaussian_MSE,MAE_metric, MAPE_metric,
+                                                                              COSI_SIMI,MSE_metric])
+    # input dataset for the training
     file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1.h5'
     # Dataset
 
@@ -116,13 +123,14 @@ def start_training():
 
     # Callbacks
     # This LR schedule is slower than in the paper.
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss',factor=0.9,patience=1)
-    check = ModelCheckpoint(file_model,monitor='val_loss',verbose=0,
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss',factor=0.9,patience=1) # present in P;Sadoski  shared code
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss',factor=0.2,patience=4) # conform to Quach paper
+    check = ModelCheckpoint(file_model_check_point,monitor='val_loss',verbose=0,
                             save_best_only=True,save_weights_only=False,
                             mode='auto',save_freq='epoch')
     stop = EarlyStopping(monitor='val_loss',min_delta=0,patience=10,verbose=0,
                          mode='auto',baseline=None,restore_best_weights=False)
-    clbks = [reduce_lr,check,stop,tensorBoard]
+    clbks = [reduce_lr,check,stop,tensorBoard,hp.KerasCallback(tblogdir, hparams)]
 
     history = model.fit(train,
                         epochs=epochs,
@@ -130,9 +138,16 @@ def start_training():
                         callbacks=clbks,
                         verbose=1)
     version_model_utput = 1
-    outputmodel = '/home1/datawork/agrouaze/model_Hs_NN_WV_ALTIcwaveV4_regression_exp1_%s.h5' % version_model_utput
-    model.save(outputmodel)
-    logging.info('output NN model saved: %s',outputmodel)
+    # if save_model:
+    #     outputmodel = '/home1/datawork/agrouaze/model_Hs_NN_WV_ALTIcwaveV4_regression_exp1_%s.h5' % version_model_utput
+    #     model.save(outputmodel)
+    logging.info('output NN model saved: %s',model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1)
+    best_mse = np.min(history.history['mean_squared_error'])
+    best_loss = np.min(history.history['val_loss'])
+    best_mae = np.min(history.history['mean_absolute_error'])
+    best_mape = np.min(history.history['mean_absolute_percentage_error'])
+    best_cos = np.min(history.history['cosine_similarity'])
+    return best_mse,best_loss,best_mae,best_mape,best_cos
 
 if __name__ =='__main__':
     root = logging.getLogger()
