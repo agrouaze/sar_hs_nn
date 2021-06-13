@@ -203,6 +203,7 @@ if __name__ =='__main__':
     parser.add_argument('--copytrainingdatasetlocaly',action='store_true',default=False)
     parser.add_argument('--outputModelFile',default=model_IFR_replication_quach2020_sadowski_release_5feb2021,
                         help='.h5 keras model file path to save',required=False)
+    parser.add_argument('--zay',action='store_true',default=False,help='change path on jean zay')
 
     args = parser.parse_args()
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
@@ -219,9 +220,15 @@ if __name__ =='__main__':
     filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_v2.h5'
     filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_v3.h5' #100 patience early stop
     filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_v4_%s'%datetime.datetime.today().strftime('%Y%m%d_%H%M%S.h5')
-    filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.h5'
+    if args.zay:
+        filename_out = '/linkhome/rech/genlop01/utt19ve/data/hs_regression/wv/exp0/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.h5'
+    else:
+        filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.h5'
     print(filename_out)
-    logdir_tensorboard = os.path.join('/home1/scratch/agrouaze/training_quach_redo_model/exp0_year2017_corrected/')
+    if args.zay:
+        logdir_tensorboard = '/gpfsdswork/projects/rech/deu/utt19ve/data/hs_regression/wv/exp0/'
+    else:
+        logdir_tensorboard = os.path.join('/home1/scratch/agrouaze/training_quach_redo_model/exp0_year2017_corrected/')
     t0 = time.time()
 
     epochs = 123
@@ -231,7 +238,11 @@ if __name__ =='__main__':
     #filename_input = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final.h5' # see redo_quach2020_sadowsky_model_provided_in_feb_2021_at_ifremer.ipynb for redoing this dataset
     filename_input = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python/final_dataset_prepared_for_sadowski21_experiment/aggregated_grouped_final.h5'
     filename_input = '/home1/scratch/agrouaze/training_quach_redo_model/exp0/aggregated_grouped_final_correction_year2017.h5' # use the copy here
-    filename_input =  '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python/final_dataset_prepared_for_sadowski21_experiment/aggregated_grouped_final_correction_year2017.h5'
+    if args.zay:
+        filename_input = '/gpfsdswork/projects/rech/deu/utt19ve/data/hs_regression/wv/exp0/aggregated_grouped_final_correction_year2017.h5'
+
+    else:
+        filename_input = '/home1/datawork/agrouaze/data/sentinel1/cwave/training_dataset_quach2020_python/final_dataset_prepared_for_sadowski21_experiment/aggregated_grouped_final_correction_year2017.h5'
     import shutil
 
     logging.info('input file: %s',filename_input)
