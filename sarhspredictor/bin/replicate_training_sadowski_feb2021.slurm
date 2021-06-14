@@ -20,7 +20,7 @@ set -x
 module purge
 export PYTHONPATH=/linkhome/rech/genlop01/utt19ve/sources/sar_hs_nn
 pybin=/gpfswork/rech/deu/utt19ve/conda/envs/py3keras_v2/bin/python
-exe=/gpfs7kw/linkhome/rech/genlop01/utt19ve/sources/sar_hs_nn/sarhspredictor/bin/replicate_training_sadowsky_feb2021.py_
+exe=/gpfs7kw/linkhome/rech/genlop01/utt19ve/sources/sar_hs_nn/sarhspredictor/bin/replicate_training_sadowsky_feb2021.py
 srun $pybin $exe --zay
 
 wait
@@ -28,3 +28,4 @@ wait
 
 # tested jean zay
 # srun --account=deu@gpu --ntasks=1 --cpus-per-task=1 --mem=120G --gres=gpu:1 --time=01:00:00 --qos=qos_gpu-dev --pty bash -i
+# note je peux augmenter les cpus-per-task

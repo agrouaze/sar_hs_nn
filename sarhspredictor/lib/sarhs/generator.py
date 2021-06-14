@@ -107,7 +107,7 @@ class SARGenerator(Sequence):
             assert not np.any(target > 100), target
         else:
             target = None
-        logging.info('spectrum : %s',spectrum.shape)
+        #logging.info('spectrum : %s',spectrum.shape)
         inputs = [spectrum, features]
         outputs = target
         return inputs, outputs
