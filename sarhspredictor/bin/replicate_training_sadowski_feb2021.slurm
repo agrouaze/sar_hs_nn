@@ -19,13 +19,21 @@
 set -x
 module purge
 export PYTHONPATH=/linkhome/rech/genlop01/utt19ve/sources/sar_hs_nn
-pybin=/gpfswork/rech/deu/utt19ve/conda/envs/py3keras_v2/bin/python
+#pybin=/gpfswork/rech/deu/utt19ve/conda/envs/py3keras_v2/bin/python
+#bcp plus rapide et fiable!!
+module load tensorflow-gpu/py3/2.2.0
+which python
 exe=/gpfs7kw/linkhome/rech/genlop01/utt19ve/sources/sar_hs_nn/sarhspredictor/bin/replicate_training_sadowsky_feb2021.py
-srun $pybin $exe --zay
+srun python $exe --zay
 
 wait
 
 
 # tested jean zay
 # srun --account=deu@gpu --ntasks=1 --cpus-per-task=1 --mem=120G --gres=gpu:1 --time=01:00:00 --qos=qos_gpu-dev --pty bash -i
-# note je peux augmenter les cpus-per-task
+# note je peux augmenter les cpus-per-task (up to 63 tested)
+
+# une autre queue on il y a plus de temps:
+# srun --account=deu@gpu --ntasks=1 --cpus-per-task=63 --mem=120G --gres=gpu:1 --time=10:00:00 --qos=qos_gpu-t3 --pty bash -i
+#dernier test
+# srun --account=deu@gpu --ntasks=1 --cpus-per-task=10 --mem=30G --gres=gpu:1 --time=19:00:00 --qos=qos_gpu-t3 --pty bash -i

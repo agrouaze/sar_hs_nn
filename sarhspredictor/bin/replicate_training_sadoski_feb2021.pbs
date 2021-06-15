@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#PBS -l walltime=04:00:00
+#PBS -l walltime=06:00:00
 #PBS -l select=1:ncpus=4:ngpus=1:mem=26g -q gpuq
 #PBS -N replicateSAdowski
 #PBS -m n
@@ -8,6 +8,8 @@ hostname
 
 echo 'je suis agrouaze'
 pybin=/home1/datawork/agrouaze/conda_envs2/envs/pytorchtest/bin/python
+pybin=/appli/conda-env/jupyterhub-tensorflow/bin/python
+echo "binary python" $pybin
 exe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/replicate_training_sadowsky_feb2021.py
 $pybin ${exe}
 echo end of python script exe

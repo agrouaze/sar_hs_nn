@@ -6,10 +6,17 @@ sarhspredictor/bin/redo_quach2020_sadowsky_model_provided_in_feb_2021_at_ifremer
 pres: https://docs.google.com/presentation/d/1hEZsDnlsKlgYC98Ha3ZF0dioWMGbhvPFlUSQuT_mw68/edit?usp=sharing
 
 ENV : pytorchtest
+ENV recommandé par RIC (B. Morin): /appli/conda-env/jupyterhub-tensorflow/
 machine datarmor node with GPU or only CPU, memory 25Go
 pour tensorboard
 (base) agrouaze@grougrou1 14:11:51 /home1/scratch/agrouaze/training_quach_redo_model conda activate pytorchtest
 (pytorchtest) agrouaze@grougrou1 14:11:56 /home1/scratch/agrouaze/training_quach_redo_model tensorboard --logdir /home1/scratch/agrouaze/quach2020/20210413/
+
+je teste sur datarmor, -> bcp de killed depassemnt cpu, pas elucider pour le moment
+qsub -I -l walltime=10:00:00 -l select=1:ncpus=4:ngpus=1:mem=120g -q gpuq
+
+lancement sur jean zay
+srun --account=deu@gpu --ntasks=1 --cpus-per-task=63 --mem=120G --gres=gpu:1 --time=01:00:00 --qos=qos_gpu-dev --pty bash -i
 """
 # Train neural network to predict significant wave height from SAR spectra.
 # Train with heteroskedastic regression uncertainty estimates.
@@ -17,36 +24,17 @@ pour tensorboard
 import os, sys
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false' # Needed to avoid cudnn bug.
 import tensorflow as tf
-from keras import backend as K
-#test to avoid ncpu depassement avec PBS (test)
-# config = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=4,
-#                         inter_op_parallelism_threads=4,
-#                         allow_soft_placement=True)
-#
-# session = tf.Session(config=config)
-# config = tf.ConfigProto()
-# config.gpu_options.allow_growth = True
-# config.log_device_placement = True
-# session = tf.Session(config=config)
-# K.set_session(session)
 import numpy as np
 from numpy.random import seed
 seed(1)
-# from tensorflow import set_random_seed
-# set_random_seed(2)
-
 tf.random.set_seed(2)
-import h5py
 import logging
 import datetime
 import time
-
-from tensorflow.keras.utils import Sequence, plot_model
 from tensorflow.keras.callbacks import ReduceLROnPlateau,ModelCheckpoint,EarlyStopping,TensorBoard
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Input,Dense,Dropout,GlobalMaxPooling2D,Conv2D,MaxPooling2D,concatenate
 from tensorflow.keras.models import Model
-from keras import backend as K
 #sys.path = ['../'] + sys.path
 sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn/')
 from sarhspredictor.lib.sarhs.generator import SARGenerator
