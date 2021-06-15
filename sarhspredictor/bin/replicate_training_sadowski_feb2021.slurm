@@ -35,5 +35,5 @@ wait
 
 # une autre queue on il y a plus de temps:
 # srun --account=deu@gpu --ntasks=1 --cpus-per-task=63 --mem=120G --gres=gpu:1 --time=10:00:00 --qos=qos_gpu-t3 --pty bash -i
-#dernier test
+#dernier test en interactif (jutilise le slurm uniquement pour aide memo)
 # srun --account=deu@gpu --ntasks=1 --cpus-per-task=10 --mem=30G --gres=gpu:1 --time=19:00:00 --qos=qos_gpu-t3 --pty bash -i

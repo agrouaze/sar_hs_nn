@@ -104,12 +104,13 @@ def root_mean_squared_error(y_true, y_pred):
     #return K.sqrt(K.mean(K.square(y_pred - y_true)))
     return rval
 
-def start_training_regression(desst,filename_out,logdir_tensorboard):
+def start_training_regression(desst,filename_out,logdir_tensorboard,epochs):
     """
 
     :param desst:
     :param filename_out:
     :param logdir_tensorboard:
+    :param epochs (int)
     :return:
     """
     model = define_model()
@@ -218,8 +219,15 @@ if __name__ =='__main__':
     else:
         logdir_tensorboard = os.path.join('/home1/scratch/agrouaze/training_quach_redo_model/exp0_year2017_corrected/')
     t0 = time.time()
-
-    epochs = 123
+    if args.zay: #avec la correction sur year 2017, je vois qu on peut encore gagner sur le loss du coup je met plus d epochs
+        #last line sur jean zay exp0:
+        #Epoch 123/123
+        #4449/4449 [==============================] - 73s 16ms/step - loss: 0.2674 - Gaussian_MSE: 0.1577 - mean_absolute_error: 1.3326 - mean_absolute_percentage_error: 48.5629 - cosine_similarity: 1.1229 - mean_s
+        #quared_error: 3.6442 - val_loss: 0.4477 - val_Gaussian_MSE: 0.1656 - val_mean_absolute_error: 1.3193 - val_mean_absolute_percentage_error: 49.2667 - val_cosine_similarity: 1.1220 - val_mean_squared_error:
+        #3.4808 - lr: 1.2704e-09
+        epochs = 228
+    else:
+        epochs = 123
     #filename = '../../data/alt/sar_hs.h5'
     #filename = '/mnt/tmp/psadow/sar/sar_hs.h5'
 
@@ -242,6 +250,7 @@ if __name__ =='__main__':
     else:
         desst = filename_input
 
-    best_mse,best_loss,best_mae,best_mape,best_cos = start_training_regression(desst,filename_out,logdir_tensorboard=logdir_tensorboard)
+    best_mse,best_loss,best_mae,best_mape,best_cos = start_training_regression(desst,filename_out,
+                                            logdir_tensorboard=logdir_tensorboard,epochs=epochs)
     elaps = (time.time()-t0)/60.
     logging.info('done: elapsed time %1.3f min',elaps)
