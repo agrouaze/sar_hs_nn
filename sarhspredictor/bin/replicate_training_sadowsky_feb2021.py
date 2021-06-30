@@ -228,6 +228,7 @@ if __name__ =='__main__':
         epochs = 228
     else:
         epochs = 123
+        epochs = 300
     #filename = '../../data/alt/sar_hs.h5'
     #filename = '/mnt/tmp/psadow/sar/sar_hs.h5'
 

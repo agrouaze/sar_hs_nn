@@ -10,11 +10,7 @@ import datetime
 import sys
 import time
 import numpy as np
-#sys.path.append('/home1/datahome/agrouaze/git/SAR-Wave-Height/')
 from sarhspredictor.lib.sarhs import preprocess
-#sys.path.append('/home1/datahome/agrouaze/git/mpc/qualitycheck/')
-#sys.path.append('/home1/datahome/agrouaze/git/npCWAVE/')
-#import compute_hs_total_SAR_v2
 from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 from sarhspredictor.lib.apply_oswK_patch import patch_oswK
 from sarhspredictor.lib.reference_oswk import   reference_oswK_1145m_60pts
@@ -27,7 +23,9 @@ def preproc_ocn_wv(ds):
     """
     filee = ds.encoding["source"]
     logging.debug('filee %s',os.path.basename(filee))
+
     fdatedt = datetime.datetime.strptime(os.path.basename(filee).split('-')[4],'%Y%m%dt%H%M%S')
+    #fdatedt = datetime.datetime.strptime(ds.attrs['start']) #ca na pas d interet car en 2015 les start date sont aussi les memes
     logging.debug('fdatedt : %s %s',fdatedt,type(fdatedt))
     #ds['time'] = xarray.DataArray([fdatedt],dims=['time']) # marche avec derniere version de xarray pas ancienne
     logging.debug('brut ds: %s',ds)
@@ -42,7 +40,7 @@ def preproc_ocn_wv(ds):
     cspcIm = ds['oswQualityCrossSpectraIm'].values.squeeze()
     ths1 = np.arange(0,360,5)
     ks1 = patch_oswK(ds['oswK'].values.squeeze(),ipfvesion=None,datedtsar=fdatedt)
-    if cspcRe.shape==(36,30):
+    if cspcRe.shape==(36,30) or cspcRe.shape==():
         logging.debug('put zero matrix X spectra')
         cspcRe = np.zeros((72,60))
         cspcIm = np.zeros((72,60))
@@ -52,6 +50,7 @@ def preproc_ocn_wv(ds):
         pass
         #ths1 = ds['oswPhi'].values.squeeze()
         #ks1 = ds['oswK'].values.squeeze()
+    logging.info('cspcRe : %s %s',cspcRe.shape,cspcRe)
     ta = ds['oswHeading'].values.squeeze()
     incidenceangle =ds['oswIncidenceAngle'].values.squeeze()
     s0 =  ds['oswNrcs'].values.squeeze()
