@@ -9,12 +9,13 @@ import copy
 import datetime
 import sys
 import time
+import pdb
 import numpy as np
 from sarhspredictor.lib.sarhs import preprocess
 from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 from sarhspredictor.lib.apply_oswK_patch import patch_oswK
 from sarhspredictor.lib.reference_oswk import   reference_oswK_1145m_60pts
-
+from get_L2_footprint import get_bbox,get_footprint #mpc/data_collect
 def preproc_ocn_wv(ds):
     """
     read and preprocess data for training/usage of the model
@@ -50,15 +51,23 @@ def preproc_ocn_wv(ds):
         pass
         #ths1 = ds['oswPhi'].values.squeeze()
         #ks1 = ds['oswK'].values.squeeze()
-    logging.info('cspcRe : %s %s',cspcRe.shape,cspcRe)
+    logging.debug('cspcRe : %s %s',cspcRe.shape,cspcRe)
     ta = ds['oswHeading'].values.squeeze()
     incidenceangle =ds['oswIncidenceAngle'].values.squeeze()
     s0 =  ds['oswNrcs'].values.squeeze()
     nv = ds['oswNv'].values.squeeze()
     lonSAR = ds['oswLon'].values.squeeze()
     latSAR = ds['oswLat'].values.squeeze()
-    #lonSAR = ds['rvlLon'].values.squeeze() #test
-    #latSAR = ds['rvlLat'].values.squeeze()
+    if np.isfinite(lonSAR) is False or abs(lonSAR)>180:
+
+        lonSAR = ds['rvlLon'].values.squeeze() #test
+        latSAR = ds['rvlLat'].values.squeeze()
+        if abs(lonSAR)>180:
+            bbox,ordered_list_pts = get_bbox(filee)
+            footprint = get_footprint(ordered_list_pts)
+            lonSAR,latSAR = footprint.exterior.centroid.xy
+            lonSAR = lonSAR[0]
+            latSAR = latSAR[0]
     satellite = os.path.basename(filee)[0:3]
     # if True :  # save a pickle for debug/test
     #     import pickle
@@ -149,6 +158,14 @@ def preproc_ocn_wv(ds):
             dimszi = ['time']
             coordi = {'time' : [fdatedt]}
             newds[vv] = xarray.DataArray(data=s0.reshape((1,)),dims=dimszi,coords=coordi)
+        elif vv in ['oswLon']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            newds[vv] = xarray.DataArray(data=[lonSAR],dims=dimszi,coords=coordi)
+        elif vv in ['oswLat']:
+            dimszi = ['time']
+            coordi = {'time' : [fdatedt]}
+            newds[vv] = xarray.DataArray(data=[latSAR],dims=dimszi,coords=coordi)
         elif vv in ['heading']:
             dimszi = ['time']
             coordi = {'time' : [fdatedt]}

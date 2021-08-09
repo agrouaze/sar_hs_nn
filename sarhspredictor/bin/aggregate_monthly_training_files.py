@@ -12,7 +12,12 @@ import numpy as np
 import glob
 import h5py
 import pandas as pd
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+    tqdm_load = True
+except:
+    print('no tqdm')
+    tqdm_load = False
 import re
 import os
 import logging
@@ -27,7 +32,6 @@ def parse_filename ( filename ) :
     filename = os.path.basename(filename)
     # platform, date, _ext = re.split('_|\.', filename)
     # platform,_alt,date,_ext = re.split('_|\.',filename)
-    print(re.split('[_.]',filename))
     if 'exp1' in filename:
         platform,_,_,_,_,_,date,_ext = re.split('[_.]',filename)
         assert _ext == 'h5',_ext
@@ -43,7 +47,8 @@ def parse_filename ( filename ) :
 
     year = int(date[0 :4])
     month = int(date[4 :6])
-    rval = {'satellite' : satellite,'year' : year,'month' : month}
+    day = int(date[6 :8])
+    rval = {'satellite' : satellite,'year' : year,'month' : month,'day':day}
     return rval
 
 
@@ -65,38 +70,43 @@ def aggregate ( files_src,file_dest,keys=None ) :
     file_dest: filename of h5
     keys: If specified, only extract these fields.
     """
-
-    for i,filename in enumerate(tqdm(files_src)) :
+    if tqdm_load:
+        generator = tqdm(files_src)
+    else:
+        generator = files_src
+    for i,filename in enumerate(generator) :
         # Add file of data to large hdf5.
         # print(filename)
-        data = Dataset(filename)
-        meta = parse_filename(filename)
+        try:
+            data = Dataset(filename)
+            meta = parse_filename(filename)
 
-        if i == 0 :
-            if keys is None :
-                # Grab keys from first file.
-                keys = data.variables.keys()
-            with h5py.File(file_dest,'w') as fdest :
-                for key in keys :
-                    # print(key)
-                    x = process(data.variables[key],key)
-                    maxshape = (None,) if len(x.shape) == 1 else (None,) + x.shape[1 :]
-                    fdest.create_dataset(key,data=x,maxshape=maxshape)
-                for key in meta :
-                    temp = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
-                    fdest.create_dataset(key,data=temp,maxshape=(None,))
-        else :
-            with h5py.File(file_dest,'a') as fdest :
-                for key in keys :
-                    num_prev = fdest[key].shape[0]
-                    num_add = data.variables[key].shape[0]
-                    fdest[key].resize(num_prev + num_add,axis=0)
-                    fdest[key][-num_add :] = process(data.variables[key],key)
-                for key in meta :
-                    num_prev = fdest[key].shape[0]
-                    fdest[key].resize(num_prev + num_add,axis=0)
-                    fdest[key][-num_add :] = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
-
+            if i == 0 :
+                if keys is None :
+                    # Grab keys from first file.
+                    keys = data.variables.keys()
+                with h5py.File(file_dest,'w') as fdest :
+                    for key in keys :
+                        # print(key)
+                        x = process(data.variables[key],key)
+                        maxshape = (None,) if len(x.shape) == 1 else (None,) + x.shape[1 :]
+                        fdest.create_dataset(key,data=x,maxshape=maxshape)
+                    for key in meta :
+                        temp = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
+                        fdest.create_dataset(key,data=temp,maxshape=(None,))
+            else :
+                with h5py.File(file_dest,'a') as fdest :
+                    for key in keys :
+                        num_prev = fdest[key].shape[0]
+                        num_add = data.variables[key].shape[0]
+                        fdest[key].resize(num_prev + num_add,axis=0)
+                        fdest[key][-num_add :] = process(data.variables[key],key)
+                    for key in meta :
+                        num_prev = fdest[key].shape[0]
+                        fdest[key].resize(num_prev + num_add,axis=0)
+                        fdest[key][-num_add :] = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
+        except:
+            logging.error('impossible to read %s',filename)
 if __name__ == '__main__':
     root = logging.getLogger()
     if root.handlers :

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#PBS -l walltime=00:10:05
+#PBS -l mem=1gb
+#PBS -N NormExp1HsWV
+#PBS -m n
+# param chosen for daily production S1A + S1B in a row
+echo "Hello ${1}"
+pybin=/home1/datawork/agrouaze/conda_envs2/envs/xsar_gdal3.3_v2/bin/python #dedicated env for Quach 2020 exploit
+pybin=/appli/conda-env/jupyterhub-tensorflow/bin/python
+export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect
+export PYTHONPATH=/home1/datahome/agrouaze/git/osm_landmask_distancecoast:$PYTHONPATH
+export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn:$PYTHONPATH
+export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor:$PYTHONPATH
+pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib/normalization_inputs_exp1.py
+#start stop inputs YYYYMMDD
+$pybin $pyexe --startdate ${1} --stopdate ${2}
+echo end of python script exe
+exit 0

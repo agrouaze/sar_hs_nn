@@ -23,8 +23,10 @@ from sarhspredictor.lib.sarhs import preprocess
 # preprocessing method for the new coloc files WV vs ALTI (based on cwaveV4) but with SLC x spectra
 def prep(ds):
     #ds = ds.drop('py_S') #bug on the run for 2015 16h the 2 June 2021
-    ds = ds.drop('dk')
-    ds = ds.drop('k')
+    if 'dk' in  ds:
+        ds = ds.drop('dk')
+    if 'k' in ds:
+        ds = ds.drop('k')
     return ds
 
 # reference_oswK_1145m_60pts
@@ -59,26 +61,31 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
             satellite = 0
         #print('nb input files to train for %s : %s'%(sat,len(lst_training_files)))
         #for ffii,file_src in enumerate(lst_training_files):
-        for mm in rrule.rrule(rrule.MONTHLY,dtstart=sta,until=sto):
+        #for mm in rrule.rrule(rrule.MONTHLY,dtstart=sta,until=sto):
+        for dd in rrule.rrule(rrule.DAILY,dtstart=sta,until=sto):
             #file_dest = os.path.join(out_dd,os.path.basename(file_src).replace('.nc','_processed.nc'))
-            pat = os.path.join(in_dd,mm.strftime('%Y'),'*','training_'+sat.lower()+'*vv-%s*.nc'%mm.strftime('%Y%m'))
-            file_dest = os.path.join(out_dd,sat+'_training_exp1_Hs_NN_regression_%s.h5'%mm.strftime('%Y%m'))
+            #pat = os.path.join(in_dd,mm.strftime('%Y'),'*','training_'+sat.lower()+'*vv-%s*.nc'%mm.strftime('%Y%m'))
+            pat = os.path.join(in_dd,dd.strftime('%Y'),'*',
+                               'training_' + sat.lower() + '*vv-%s*.nc' % dd.strftime('%Y%m%d'))
+            file_dest = os.path.join(out_dd,sat+'_training_exp1_Hs_NN_regression_%s.h5'%dd.strftime('%Y%m%d'))
             if os.path.exists(file_dest) and redo is True:
                 os.remove(file_dest)
                 logging.info('remove existing output file : %s',file_dest)
             if os.path.exists(file_dest) and redo is False:
-                logging.info('%s already exists -> skip and continue the month loop',file_dest)
+                logging.info('%s already exists -> skip and continue the daily loop',file_dest)
                 continue
-            lst_files_measu_to_read = glob.glob(pat)#[0:10] # for dev !!!!!!!!!!!
-            logging.info('nb files for month %s : %s',mm,len(lst_files_measu_to_read))
+            lst_files_measu_to_read = glob.glob(pat)[0:3000] # for dev !!!!!!!!!!!
+            logging.info('nb files for daily %s : %s',dd,len(lst_files_measu_to_read))
             if len(lst_files_measu_to_read)>0:
-                print('file_dest',file_dest,'month',mm)
+                #print('file_dest',file_dest,'daily',dd)
                 if os.path.exists(os.path.dirname(file_dest)) is False:
                     os.makedirs(os.path.dirname(file_dest))
-                    print('outputdir mkdir')
+                    #print('outputdir mkdir')
                 # These variables are expected in the source file.
                 keys = ['timeSAR', 'lonSAR',  'latSAR', 'incidenceAngle', 'crossSpectraRePol', 'crossSpectraImPol',
                         'py_S','sigma0','normalizedVariance'] # Needed for predictions.
+                keys_ocn = ['S','cspcRe','cspcIm']
+                keys = keys+keys_ocn # added to have both slc and ocn in the same dataset (July 21)
                 t0 = time.time()
                 # try:
                 #     h5py.File(file_dest, 'r').close() #try to close the file if it is opened before
@@ -106,6 +113,14 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                     #cwave = src['cwave'][:]
                     cwave = preprocess.conv_cwave(cwave) # Remove extrema, then standardize with hardcoded mean, vars.
                     fd.create_dataset('cwave', data=cwave)
+
+                    #add cwave from OCN (to comapre)
+                    Socn = np.array(src['S'].values)  # * float(src['py_S'].scale_factor))
+                    cwave_ocn = np.hstack(
+                        [Socn,src['sigma0'].values.reshape(-1,1),src['normalizedVariance'].values.reshape(-1,1)])
+                    # cwave = src['cwave'][:]
+                    cwave_ocn = preprocess.conv_cwave(cwave_ocn)  # Remove extrema, then standardize with hardcoded mean, vars.
+                    fd.create_dataset('cwave_ocn',data=cwave_ocn)
 
                     # Observation meta data.
                     latSAR, lonSAR = src['latSAR'].values, src['lonSAR'].values
@@ -162,6 +177,20 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                     logging.debug('spectrum : %s',x.shape)
                     fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
 
+                    # add spectral data OCN
+                    logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
+                    tmpre = src['cspcRe'].values.squeeze()
+                    #tmpre = np.swapaxes(tmpre,1,2)
+                    tmpim = src['cspcIm'].values.squeeze()
+                    #tmpim = np.swapaxes(tmpim,1,2)
+                    logging.debug('tmpre : %s',tmpre.shape)
+                    re_ocn = preprocess.conv_real(tmpre,exp_id=1)
+                    im_ocn = preprocess.conv_imaginary(tmpim,exp_id=1)
+                    x_ocn = np.stack((re_ocn,im_ocn),axis=3)
+                    logging.debug('spectrum : %s',x_ocn.shape)
+                    fd.create_dataset('spectrum_ocn',
+                                      data=x_ocn)  # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
+
                     # Altimeter features.
                     hsALT = src['hsALT'].values
                     fd.create_dataset('hsALT', data=hsALT, shape=(hsALT.shape[0], 1))
@@ -187,9 +216,45 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                     fd.create_dataset('incidenceAngle', data=src['incidenceAngle'].values) #added by agrouaze
                     fd.create_dataset('lonSAR', data=src['lonSAR'].values) #added by agrouaze
                     fd.create_dataset('latSAR', data=src['latSAR'].values) #added by agrouaze
-                    fd.create_dataset('cspcRe', data=src['crossSpectraRePol'].values) #added by agrouaze
-                    fd.create_dataset('cspcIm', data=src['crossSpectraImPol'].values) #added by agrouaze
+                    fd.create_dataset('cspcRe_slc', data=src['crossSpectraRePol'].values) #added by agrouaze
+                    fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
+                    fd.create_dataset('cspcRe_ocn',data=src['cspcRe'].values)  # added by agrouaze
+                    fd.create_dataset('cspcIm_ocn',data=src['cspcIm'].values)  # added by agrouaze
                     fd.create_dataset('py_S', data=S) #added by agrouaze
+                    fd.create_dataset('py_S_ocn',data=Socn)  # added by agrouaze
                     #fd.close()
                 print('elapsed time to build %s: %1.3f seconds'%(file_dest,time.time()-t0))
-                logging.info('fiel written %s',os.path.exists(file_dest))
+                logging.info('file written %s',os.path.exists(file_dest))
+
+if __name__ == '__main__':
+    root = logging.getLogger ()
+    if root.handlers:
+        for handler in root.handlers:
+            root.removeHandler (handler)
+    import argparse
+    import resource
+    time.sleep(np.random.rand(1,1)[0][0]) #to avoid issue with mkdir
+    parser = argparse.ArgumentParser (description='norm inputs Hs NN training')
+    parser.add_argument ('--verbose',action='store_true',default=False)
+    parser.add_argument ('--startdate',action='store',help='YYYYMMDD',required=True)
+    parser.add_argument ('--stopdate',action='store',help='YYYYMMDD.',required=True)
+
+    args = parser.parse_args ()
+
+    fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
+
+    if args.verbose :
+        logging.basicConfig(level=logging.DEBUG,format=fmt,
+                            datefmt='%d/%m/%Y %H:%M:%S')
+    else :
+        logging.basicConfig(level=logging.INFO,format=fmt,
+                            datefmt='%d/%m/%Y %H:%M:%S')
+    t0 = time.time ()
+    in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v2/'
+    out_dd = '/home1/scratch/agrouaze/training_quach_redo_model/exp1/daily_normalized'
+    logging.info('input dir %s',in_dd)
+    logging.info('output dir : %s',out_dd)
+    normalize_training_ds(sta=datetime.datetime.strptime(args.startdate,'%Y%m%d'),
+                          sto=datetime.datetime.strptime(args.stopdate,'%Y%m%d'),in_dd=in_dd,out_dd=out_dd,redo=False)
+    logging.info('done in %1.3f min',(time.time()-t0)/60.)
+    logging.info('peak memory usage: %s Mbytes',resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.)

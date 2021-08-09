@@ -7,7 +7,7 @@ A Grouazel
 the listing of tiff to treat is here: /home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4.txt
 inspiration rebuild_training_dataset.py
 tested with cwave
-
+INPUTS: SLC WV, CWAVEv4 alti Hs,
 """
 import os
 import sys
@@ -23,17 +23,28 @@ import warnings
 import copy
 import time
 from collections import defaultdict
+from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 import resource
 warnings.simplefilter(action='ignore',category=FutureWarning)
 from scipy.spatial import KDTree
 import traceback
-
 import pdb
 
 from predict_hs_from_SLC import compute_Cwave_params_and_xspectra_fromSLC
-
+reference_oswK_1145m_60pts = np.array([0.005235988, 0.00557381, 0.005933429, 0.00631625, 0.00672377,
+    0.007157583, 0.007619386, 0.008110984, 0.008634299, 0.009191379,
+    0.0097844, 0.01041568, 0.0110877, 0.01180307, 0.01256459, 0.01337525,
+    0.01423822, 0.01515686, 0.01613477, 0.01717577, 0.01828394, 0.01946361,
+    0.02071939, 0.02205619, 0.02347924, 0.02499411, 0.02660671, 0.02832336,
+    0.03015076, 0.03209607, 0.03416689, 0.03637131, 0.03871796, 0.04121602,
+    0.04387525, 0.04670605, 0.0497195, 0.05292737, 0.05634221, 0.05997737,
+    0.06384707, 0.06796645, 0.0723516, 0.07701967, 0.08198893, 0.08727881,
+    0.09290998, 0.09890447, 0.1052857, 0.1120787, 0.1193099, 0.1270077,
+    0.1352022, 0.1439253, 0.1532113, 0.1630964, 0.1736193, 0.1848211,
+    0.1967456, 0.2094395])
 DIR_ORIGINAL_COLOCS = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/colocations/original_colocations_YoungAltiDatabase_vs_WV_L2_Jstopa/cwaveV4/'
 OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v1/'
+OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v2/' # rep with both SLC and OCN inputs for training
 def round_seconds(obj: datetime.datetime) -> datetime.datetime:
     if obj.microsecond >= 500_000:
         obj += datetime.timedelta(seconds=1)
@@ -152,7 +163,9 @@ def prepare_one_measurement(slc,ocn,dev=False):
     for vv in subsetcoloc.keys():
         logging.debug('vv: %s %s',vv,subsetcoloc[vv].shape)
         if vv in ['S','cspcRe','cspcIm']:
-            subsetcoloc = subsetcoloc.drop(vv)
+            #subsetcoloc = subsetcoloc.drop(vv)
+            subsetcoloc[vv].attrs['description'] = 'variable from cwaveV4 matlab interpolation from OCN products'
+            # I dont when to drop these variable since I want to do both training for OCN and SLC for exp1 (July 21)
         elif vv in ['phi','k','th']:
             pass
         else:
@@ -178,12 +191,27 @@ def prepare_one_measurement(slc,ocn,dev=False):
     incidenceangle = subsetcoloc['incidenceAngle'].values[0]
     lonsar = subsetcoloc['lonSAR'].values[0]
     latsar = subsetcoloc['latSAR'].values[0]
+    subsetcoloc['cspcRe']  = subsetcoloc['cspcRe'].astype('float64')
+    subsetcoloc['cspcIm']  = subsetcoloc['cspcIm'].astype('float64') # not sure this is necessary
+    #subsetcoloc['S'] = subsetcoloc['S'].astype('float64') # problem with cwaveV4 variable not readable, I have to compute it again
+    satellite = os.path.basename(ocn)[0:3]
+    ks1 = reference_oswK_1145m_60pts
+    subset_ok,flagKcorrupted,cspcReX,cspcImX,_,ks1,ths1,kx,ky,\
+    cspcReX_not_conservativ,Socn = format_input_CWAVE_vector_from_OCN(cspcRe=subsetcoloc['cspcRe'].values.squeeze().T,
+                                                                            cspcIm=subsetcoloc['cspcIm'].values.squeeze().T,ths1=ths1,ta=ta,
+                                                                            incidenceangle=incidenceangle,
+                                                                            s0=s0,nv=nv,ks1=ks1,datedt=datedt_ocn,
+                                                                            lonSAR=lonsar,latSAR=latsar,satellite=satellite)
 
-    crossSpectraImPol_xa,crossSpectraRePol_xa,times_bidons,S = compute_Cwave_params_and_xspectra_fromSLC(slc,dev,
+
+
+
+    crossSpectraImPol_xa,crossSpectraRePol_xa,times_bidons,S_slc = compute_Cwave_params_and_xspectra_fromSLC(slc,dev,
                     nb_match=1,ths1=ths1,ta=ta,s0=s0,nv=nv,incidenceangle=incidenceangle,lonsar=lonsar,latsar=latsar)
     subsetcoloc = subsetcoloc.drop('k') #to avoid issues of ambigiuity on k (whether coords or variable)
     subsetcoloc['crossSpectraImPol'] = crossSpectraImPol_xa
     subsetcoloc['crossSpectraRePol'] = crossSpectraRePol_xa
+
     logging.info('crossSpectraRePol %s',crossSpectraRePol_xa.shape)
     logging.info('ta : %s',ta)
     logging.info('incidenceangle : %s',incidenceangle)
@@ -198,7 +226,10 @@ def prepare_one_measurement(slc,ocn,dev=False):
         if 'prb' in hh :
             subsetcoloc = subsetcoloc.drop(hh)
 
-    subsetcoloc['py_S'] = xarray.DataArray(np.tile(S.T,(nb_match,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
+    subsetcoloc['py_S'] = xarray.DataArray(np.tile(S_slc.T,(nb_match,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
+    subsetcoloc['py_S'].attrs['description'] = 'S params from SLC xspectra'
+    subsetcoloc['S'] = xarray.DataArray(np.tile(Socn.T,(nb_match,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
+    subsetcoloc['S'].attrs['description'] = 'S params from OCN xpectra'
     #subsetcoloc['py_S'] = xarray.DataArray(S.T,dims=['time','N'],coords={'time':[datedt_slc],'N':np.arange(20)}) #solution simple
     #subsetcoloc['py_S'] = subsetcoloc['py_S'].attrs['description']='20 C-WAVE params computed from polar cross spectra 2-tau'
     return subsetcoloc

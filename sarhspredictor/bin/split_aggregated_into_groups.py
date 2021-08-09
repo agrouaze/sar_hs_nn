@@ -233,3 +233,153 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             #print(f'Done with {months}')
             logging.info('Done with %s',years)
     logging.info('Done')
+
+def split_aggregated_ds_v3(file_src,file_dest,exp_id=1):
+    """
+    ma version pcq je pense que ca nest aps une bonne idee de refaire les normalization deja faite dans le training dataset
+    + v3: splitting nto depending on dates but always 80% train 20% valid
+    :param file_src:
+    :param file_dest:
+    :return:
+    """
+    logging.info('start splitting into groups')
+    #groups = {'2015_2016' : [2015,2016],'2017' : [2017],'2018' : [2018]}
+    groups = {'training_dataset':80,'validation_dataset':20}
+    #groups = {'group_1':[1,2,3,4,5,6],'group_2':[7,8,9],'group_3':[10,11,12]} # for dev on exp1 I only have 2015 for now
+    # Print fields of source file.
+    with h5py.File(file_src,'r') as f :
+        for k in [k for k in f.keys()] :
+            logging.debug('k',k)
+            #print(f'{k}: {f[k].dtype}')
+    logging.info('start creating the final .h5 file')
+    # Create h5.
+    with h5py.File(file_src,'r') as fs,h5py.File(file_dest,'w') as fd :
+        total_size = len(fs['month'][:])
+        for group_name,pct_data in groups.items() :
+        #for group_name,months in groups.items() :
+            logging.info('group_name: %s pct_data: %s',group_name,pct_data)
+            #logging.info('group_name: %s months: %s',group_name,months)
+            grp = fd.create_group(group_name)
+
+
+            # Find examples of the specified years.
+            indices = np.zeros_like(fs['year'][:],dtype='bool')
+            indices_val  = np.arange(total_size)
+            if group_name=='training_dataset':
+                indices = np.logical_or(indices_val<=int(total_size*groups['training_dataset']/100.),indices)
+            else:
+                indices = np.logical_or(indices_val > int(total_size * groups['training_dataset']/100.),indices)
+            logging.info('indices %s %s %s',group_name,indices.shape,indices.sum())
+            # Find examples that don't have nans.
+            indices[np.any(np.isnan(fs['py_S'][:]),axis=1)] = 0
+            indices[np.isnan(fs['sigma0'][:])] = 0
+            indices[np.isnan(fs['normalizedVariance'][:])] = 0
+            #I add other features because in 2017 it crash the learning (agrouaze June 2021)
+            logging.info('assert that no NaN in high level features!! indices before : %s',indices.sum())
+            indices[np.isnan(fs['latSAR'][:])] = 0
+            logging.info('indices sum after lat : %s',indices.sum())
+            indices[np.isnan(fs['lonSAR'][:])] = 0
+            logging.info('indices sum after lon : %s',indices.sum())
+            indices[np.isnan(fs['incidenceAngle'][:])] = 0
+            logging.info('indices sum after inc : %s',indices.sum())
+            indices[np.isnan(fs['dx'][:])] = 0
+            logging.info('indices sum after dx : %s',indices.sum())
+            indices[np.isnan(fs['dt'][:])] = 0
+            logging.info('indices sum after dt : %s',indices.sum())
+            indices[np.isnan(fs['timeSAR'][:].squeeze())] = 0
+            logging.info('indices sum after time : %s',indices.sum())
+            indices[np.isnan(fs['todSAR'][:].squeeze())] = 0
+            logging.info('indices sum after tod : %s',indices.sum())
+            indices[np.isnan(fs['satellite'][:].squeeze())] = 0
+            logging.info('indices sum after sat : %s',indices.sum())
+            indices[np.isnan(fs['hsALT'][:].squeeze())] = 0
+            logging.info('indices sum after hsalt : %s',indices.sum())
+            logging.info('cspcIm_ocn shape : %s',fs['cspcIm_ocn'][:].shape)
+            indices[np.any(np.any(np.isnan(fs['cspcIm_ocn'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Im : %s',indices.sum())
+            indices[np.any(np.any(np.isnan(fs['cspcRe_ocn'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Re : %s',indices.sum())
+            logging.info('cspcIm_slc shape : %s',fs['cspcIm_slc'][:].shape)
+            indices[np.any(np.any(np.isnan(fs['cspcIm_slc'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Im slc : %s',indices.sum())
+            indices[np.any(np.any(np.isnan(fs['cspcRe_slc'][:]),axis=2),axis=1)] = 0
+            logging.info('indices sum after Re slc : %s',indices.sum())
+            # Done
+            num_examples = indices.sum()
+            logging.info('Found %s events from group: %s ',num_examples,group_name)
+            #print(f'Found {num_examples} events from months: ',months)
+
+            # Write data from this year.
+            # print(fs['year'][indices].shape)
+            grp.create_dataset('year',data=fs['year'][indices])
+
+            # Get 22 CWAVE features.
+            #cwave = np.hstack([fs['py_S'][indices,...],fs['sigma0'][indices].reshape(-1,1),
+            #                   fs['normalizedVariance'][indices].reshape(-1,1)])
+            #cwave = preprocess.conv_cwave(cwave)  # Remove extrema, then standardize with hardcoded mean,vars.
+            cwave = fs['cwave'][indices,...]
+            grp.create_dataset('cwave_slc',data=cwave)
+
+            cwave_ocn = fs['cwave_ocn'][indices,...]
+            grp.create_dataset('cwave_ocn',data=cwave_ocn)
+
+            # Additional features.
+            dx = preprocess.conv_dx(fs['dx'][indices]) #I keep the normalisation here for dx and dt
+            dt = preprocess.conv_dt(fs['dt'][indices])
+            grp.create_dataset('dxdt',data=np.column_stack([dx,dt]))
+
+            latSAR = fs['latSAR'][indices]
+            lonSAR = fs['lonSAR'][indices]
+            latSARcossin = preprocess.conv_position(latSAR)  # Gets cos and sin
+            lonSARcossin = preprocess.conv_position(lonSAR)
+            grp.create_dataset('latlonSAR',data=np.column_stack([latSAR,lonSAR]))
+            grp.create_dataset('latlonSARcossin',data=np.hstack([latSARcossin,lonSARcossin]))
+            #print('timeSAR',fs['timeSAR'].shape)
+            timeSAR = fs['timeSAR'][:].squeeze()[indices]
+            #todSAR = preprocess.conv_time(timeSAR)
+            todSAR = fs['todSAR'][:].squeeze()[indices]
+            grp.create_dataset('timeSAR',data=timeSAR,shape=(timeSAR.shape[0],1))
+            grp.create_dataset('todSAR',data=todSAR,shape=(todSAR.shape[0],1))
+
+            incidence = preprocess.conv_incidence(fs['incidenceAngle'][indices])  # Separates into 2 var.
+            grp.create_dataset('incidence',data=incidence)
+
+            satellite = fs['satellite'][indices]
+            grp.create_dataset('satellite',data=satellite,shape=(satellite.shape[0],1))
+
+            # Altimeter
+            hsALT = fs['hsALT'][:].squeeze()[indices]
+            grp.create_dataset('hsALT',data=hsALT,shape=(hsALT.shape[0],1))
+
+            # Get spectral data.
+            logging.info('fs[cspcRe] : %s',fs['cspcRe_ocn'].shape)
+            tmpRe_ocn = fs['cspcRe_ocn'][indices,...].squeeze()
+            #tmpRe = np.swapaxes(tmpRe,1,2)
+            tmpIm_ocn = fs['cspcIm_ocn'][indices,...].squeeze()
+            #tmpIm = np.swapaxes(tmpIm,1,2)
+            logging.info('tmpIm : %s',tmpIm_ocn.shape)
+            x_ocn = np.stack((preprocess.conv_real(tmpRe_ocn,exp_id=exp_id),
+                          preprocess.conv_imaginary(tmpIm_ocn,exp_id=exp_id),
+                          ),
+                         axis=3)
+            grp.create_dataset('spectrum_ocn',data=x_ocn)
+
+            # Get spectral data. SLC
+            logging.info('fs[cspcRe_slc] : %s',fs['cspcRe_slc'].shape)
+            tmpRe_slc = fs['cspcRe_slc'][indices,...].squeeze()
+            tmpRe_slc = np.swapaxes(tmpRe_slc,1,2)
+            tmpIm_slc = fs['cspcIm_slc'][indices,...].squeeze()
+            tmpIm_slc = np.swapaxes(tmpIm_slc,1,2)
+            logging.info('tmpIm_slc : %s',tmpIm_slc.shape)
+            x_slc = np.stack((preprocess.conv_real(tmpRe_slc,exp_id=exp_id),
+                              preprocess.conv_imaginary(tmpIm_slc,exp_id=exp_id),
+                              ),
+                             axis=3)
+            grp.create_dataset('spectrum_slc',data=x_slc)
+            #print(f'Done with {months}')
+            logging.info('Done with %s',group_name)
+    try:
+        fd.close()
+    except:
+        logging.info('tried to close file dest handler unsuccessfuly (may be already closed)')
+    logging.info('Done')
