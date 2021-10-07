@@ -11,6 +11,7 @@ from netCDF4 import Dataset
 import numpy as np
 import glob
 import h5py
+import traceback
 import pandas as pd
 try:
     from tqdm import tqdm
@@ -74,39 +75,49 @@ def aggregate ( files_src,file_dest,keys=None ) :
         generator = tqdm(files_src)
     else:
         generator = files_src
+    shapes = {}
     for i,filename in enumerate(generator) :
         # Add file of data to large hdf5.
         # print(filename)
         try:
             data = Dataset(filename)
             meta = parse_filename(filename)
+            if 'lonSAR' in data.variables.keys() and 'cspcRe_slc' in  data.variables.keys(): #security for files without all the variables
+                if i == 0 :
+                    if keys is None :
+                        # Grab keys from first file.
+                        keys = data.variables.keys()
+                    with h5py.File(file_dest,'w') as fdest :
+                        for key in keys :
+                            # print(key)
+                            x = process(data.variables[key],key)
+                            maxshape = (None,) if len(x.shape) == 1 else (None,) + x.shape[1 :]
+                            fdest.create_dataset(key,data=x,maxshape=maxshape)
+                            shapes[key] = maxshape
+                        for key in meta :
+                            temp = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
+                            fdest.create_dataset(key,data=temp,maxshape=(None,))
+                else :
+                    with h5py.File(file_dest,'a') as fdest :
+                        for key in keys :
+                            num_prev = fdest[key].shape[0]
+                            num_add = data.variables[key].shape[0]
+                            fdest[key].resize(num_prev + num_add,axis=0)
+                            fdest[key][-num_add :] = process(data.variables[key],key)
+                            shapes[key] = num_prev + num_add
+                        for key in meta :
+                            num_prev = fdest[key].shape[0]
+                            fdest[key].resize(num_prev + num_add,axis=0)
+                            fdest[key][-num_add :] = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
 
-            if i == 0 :
-                if keys is None :
-                    # Grab keys from first file.
-                    keys = data.variables.keys()
-                with h5py.File(file_dest,'w') as fdest :
-                    for key in keys :
-                        # print(key)
-                        x = process(data.variables[key],key)
-                        maxshape = (None,) if len(x.shape) == 1 else (None,) + x.shape[1 :]
-                        fdest.create_dataset(key,data=x,maxshape=maxshape)
-                    for key in meta :
-                        temp = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
-                        fdest.create_dataset(key,data=temp,maxshape=(None,))
-            else :
-                with h5py.File(file_dest,'a') as fdest :
-                    for key in keys :
-                        num_prev = fdest[key].shape[0]
-                        num_add = data.variables[key].shape[0]
-                        fdest[key].resize(num_prev + num_add,axis=0)
-                        fdest[key][-num_add :] = process(data.variables[key],key)
-                    for key in meta :
-                        num_prev = fdest[key].shape[0]
-                        fdest[key].resize(num_prev + num_add,axis=0)
-                        fdest[key][-num_add :] = np.ones((data.variables[keys[0]].shape[0],),dtype=int) * meta[key]
+            else:
+                logging.info('file %s doesnt have lonSAR variable it is probably corrupted',filename)
+
         except:
             logging.error('impossible to read %s',filename)
+            logging.error('traceback :%s', traceback.format_exc())
+        logging.info('shape cspcRe_slc : %s shape timeALT %s',shapes['cspcRe_slc'],shapes['timeALT'])
+            #raise mlfkgmk
 if __name__ == '__main__':
     root = logging.getLogger()
     if root.handlers :

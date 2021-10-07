@@ -31,21 +31,23 @@ import numpy as np
 import uuid
 import pdb
 from shared_information import PROJECT_DIR_DATARMOR,sats_acro,DIR_HS_EMP_CWAVE_CCI,VERSION_CWAVE_CCI
-from produce_list_file_S1 import writeTheFileList
 from sarhspredictor.lib.predict_with_quach2020_on_OCN_using_keras import main_level_1
-#from rebuild_training_dataset_exp1 import
 from sarhspredictor.lib.load_quach_2020_keras_model import load_quach2020_model_v2,load_quach2020_model_exp1
-from coastaux.lib import swiml2sproc_utils_ancillary_landmask
 from sarhspredictor.config import land_polygon_path,land_raster_path
-from get_path_from_base_SAFE import get_path_from_base_SAFE
-from swiml2sproc.utils.ancillary.seaice import get_seaice_concentration
-from add_bathymetry_from_GEBCO import GEBCO14Bathymetry
 from sarhspredictor.lib.predict_hs_from_SLC import predictions_from_slc_SAFE
 from read_era05_meteo_params import get_params_at_locations
+from add_bathymetry_from_GEBCO import GEBCO14Bathymetry
+
+from coastaux.lib import swiml2sproc_utils_ancillary_landmask
+
+from swiml2sproc.utils.ancillary.seaice import get_seaice_concentration
+
+
+from get_path_from_base_SAFE import get_path_from_base_SAFE # mpc/data_collect
 import match_SAFE_L1_L2 # mpc/data_collect
 from get_classification_infos import get_classification_infos_safe_granularity #,get_classification_infos #Mpc/qualitycheck
-from match_measu_wv_with_classif_xml import get_xml_path_from_safe
-from reader_classif_wv_cls_xml import read_xml_classif_ID
+from match_measu_wv_with_classif_xml import get_xml_path_from_safe  #mpc/qualitycheck
+from reader_classif_wv_cls_xml import read_xml_classif_ID #mpc/qualitycheck
 INPUT_TXT_DIR = '/home1/scratch/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
 INPUT_TXT_DIR = '/home1/datahome/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'
 INPUT_TXT_DIR = '/home1/datawork/agrouaze/sentinel1/L2/WV/hs_total_SAR/v1/'

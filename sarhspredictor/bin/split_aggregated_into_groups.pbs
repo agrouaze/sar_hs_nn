@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-#PBS -l walltime=00:50:05
-#PBS -l mem=5gb
-#PBS -N NormExp1HsWV
+#PBS -l walltime=12:50:05
+#PBS -l mem=120gb
+#PBS -N SplitExp1Groups
 #PBS -m n
 # param chosen for daily production S1A + S1B in a row
 echo "Hello ${1}"
-#pybin=/home1/datawork/agrouaze/conda_envs2/envs/xsar_gdal3.3_v2/bin/python #dedicated env for Quach 2020 exploit
+pybin=/home1/datawork/agrouaze/conda_envs2/envs/xsar_gdal3.3_v2/bin/python #dedicated env for Quach 2020 exploit
 pybin=/appli/conda-env/jupyterhub-tensorflow/bin/python
 export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect
 export PYTHONPATH=/home1/datahome/agrouaze/git/osm_landmask_distancecoast:$PYTHONPATH
 export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn:$PYTHONPATH
 export PYTHONPATH=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor:$PYTHONPATH
 pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/split_aggregated_into_groups.py
+#start stop inputs YYYYMMDD
 $pybin $pyexe
 echo end of python script exe
 exit 0

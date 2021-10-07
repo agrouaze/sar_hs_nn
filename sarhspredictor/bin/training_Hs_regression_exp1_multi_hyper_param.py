@@ -28,6 +28,7 @@ if __name__ == '__main__' :
     HP_LEARNING_RATE = hp.HParam('learning_rate',  hp.Discrete([1e-2, 1e-3, 1e-4]))
     HP_BATCH_SIZE = hp.HParam('batch_size',hp.Discrete([64,128,256,512,1024]))
     results_path = '/home1/scratch/agrouaze/exp_1_hp_v2/'
+    results_path = '/home1/scratch/agrouaze/exp_1_hp_v2_7oct21/'
     # Launch testing session
     session_num = 0
     for learning_rate in HP_LEARNING_RATE.domain.values:

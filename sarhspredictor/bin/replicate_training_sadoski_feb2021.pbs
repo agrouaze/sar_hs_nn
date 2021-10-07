@@ -5,8 +5,6 @@
 #PBS -m n
 
 hostname
-
-echo 'je suis agrouaze'
 #pybin=/home1/datawork/agrouaze/conda_envs2/envs/pytorchtest/bin/python
 # python binary tuned by RIC (B.Morin) factor 20 on the speed + no bug of CPU overseed
 pybin=/appli/conda-env/jupyterhub-tensorflow/bin/python

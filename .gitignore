@@ -12,3 +12,5 @@ sarhspredictor/examples/.ipynb_checkpoints/
 build/
 
 sarhspredictor/bin/.ipynb_checkpoints/
+
+build_old/

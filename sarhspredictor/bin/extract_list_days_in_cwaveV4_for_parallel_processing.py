@@ -112,4 +112,4 @@ if __name__ == '__main__':
                             datefmt='%d/%m/%Y %H:%M:%S')
 
     #raw_listing_edition(args)
-    consolidate_listing(args,a_year='2015')
+    consolidate_listing(args,a_year='2019')

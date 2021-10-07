@@ -114,12 +114,14 @@ def start_training_regression(desst,filename_out,logdir_tensorboard,epochs):
     :return:
     """
     model = define_model()
-    model.compile(loss=[Gaussian_NLL],optimizer=Adam(lr=0.0001),metrics=[Gaussian_MSE,MAE_metric,MAPE_metric,
+
+    initial_learning_rate = 0.0003 #paper Quach 2020 , different from 0.0001 proposed in notebooks shared by P. Sadowdski
+    model.compile(loss=[Gaussian_NLL],optimizer=Adam(lr=initial_learning_rate),metrics=[Gaussian_MSE,MAE_metric,MAPE_metric,
                                                                        COSI_SIMI,MSE_metric])
     # i dont know if i can put root_mean_squared_error as a metric or a second loss -> TBC
 
     # Dataset
-    batch_size = 128
+    batch_size = 128 #paper Quach 2020
     #batch_size = 4096 # to test agrouaze
     logging.info('input file: %s',desst)
     logging.info('output file: %s',filename_out)
@@ -157,7 +159,7 @@ def start_training_regression(desst,filename_out,logdir_tensorboard,epochs):
     check = ModelCheckpoint(filename_out, monitor='val_loss', verbose=0,
                             save_best_only=True, save_weights_only=False,
                             mode='auto', save_freq='epoch')
-    stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=0, #patience was 10 with Peter
+    stop = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=0, #patience was 10 with Peter
                          mode='auto', baseline=None, restore_best_weights=False)
     clbks = [reduce_lr, check, stop,tensorBoard] #tensorBoard out because I suspect it slow down the process
 
@@ -213,7 +215,10 @@ if __name__ =='__main__':
         filename_out = '/linkhome/rech/genlop01/utt19ve/data/hs_regression/wv/exp0/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.h5'
     else:
         filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.h5'
+        filename_out = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/test_17sept2021/heteroskedastic_2017_agrouaze_exp0_year2017_corrected.epoch{epoch:02d}-loss{val_loss:.2f}.hdf5'
     print(filename_out)
+    if not os.path.exists(os.path.dirname(filename_out)):
+        os.makedirs(os.path.dirname(filename_out),0o0755)
     if args.zay:
         logdir_tensorboard = '/gpfsdswork/projects/rech/deu/utt19ve/data/hs_regression/wv/exp0/'
     else:

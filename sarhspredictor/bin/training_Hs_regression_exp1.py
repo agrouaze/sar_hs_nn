@@ -104,6 +104,9 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
                                                                               COSI_SIMI,MSE_metric])
     # input dataset for the training
     file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1.h5'
+    # file provided to Zhengyang 20 of sept 2021:
+    file_dest2 = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/aggregated_grouped_final_exp1_per_year_v21sept2021.h5'
+    file_dest2 = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/D1_v2_v5oct2021.h5'
     # Dataset
 
     epochs = 123
@@ -112,9 +115,9 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
     filename = file_dest2
     print(file_dest2)
     train = SARGenerator(filename=filename,
-                         subgroups=['group_1','group_2'],
-                         batch_size=batch_size)
-    valid = SARGenerator(filename=filename,subgroups=['group_3'],batch_size=batch_size)
+                         subgroups=['2015_2016', '2017'] ,
+                         batch_size=batch_size,exp=1,levelinputs='slc')
+    valid = SARGenerator(filename=filename,subgroups=['2018'],batch_size=batch_size,exp=1,levelinputs='slc')
     # filename = '/mnt/tmp/psadow/sar/sar_hs.h5'
     # epochs = 25
     # train = SARGenerator(filename=filename,
@@ -130,7 +133,7 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
                             mode='auto',save_freq='epoch')
     stop = EarlyStopping(monitor='val_loss',min_delta=0,patience=10,verbose=0,
                          mode='auto',baseline=None,restore_best_weights=False)
-    clbks = [reduce_lr,check,stop,tensorBoard,hp.KerasCallback(tblogdir, hparams)]
+    clbks = [reduce_lr,check,stop,tensorBoard] # hp.KerasCallback(tblogdir, hparams)
 
     history = model.fit(train,
                         epochs=epochs,
@@ -141,7 +144,7 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
     # if save_model:
     #     outputmodel = '/home1/datawork/agrouaze/model_Hs_NN_WV_ALTIcwaveV4_regression_exp1_%s.h5' % version_model_utput
     #     model.save(outputmodel)
-    logging.info('output NN model saved: %s',model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1)
+    logging.info('output NN model saved: %s',file_model_check_point)
     best_mse = np.min(history.history['mean_squared_error'])
     best_loss = np.min(history.history['val_loss'])
     best_mae = np.min(history.history['mean_absolute_error'])
@@ -169,5 +172,6 @@ if __name__ =='__main__':
         logging.basicConfig(level=logging.INFO,format=fmt,
                             datefmt='%d/%m/%Y %H:%M:%S')
     t0 = time.time()
-    start_training()
+    output_model = '/home1/scratch/agrouaze/test_exp1_complete_dataset_provided_to_zhengyang/keras_model_exp1_D1_v2.h5'
+    start_training(checkPointModelSave=output_model)
     logging.info('elapsed time %1.1f sec',time.time()-t0)

@@ -1,7 +1,5 @@
 # coding: utf-8
 """
-July 2021: we have problem to find enough memory (200Go) and time (10h) to do a single huge nc file
-instead we will produce nc files per year and satellite: easier to produce and easy to read on the fly by xwaves workers
 """
 import os
 import sys

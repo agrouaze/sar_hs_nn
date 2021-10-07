@@ -23,10 +23,12 @@ from sarhspredictor.lib.sarhs import preprocess
 # preprocessing method for the new coloc files WV vs ALTI (based on cwaveV4) but with SLC x spectra
 def prep(ds):
     #ds = ds.drop('py_S') #bug on the run for 2015 16h the 2 June 2021
+    filee = ds.encoding['source']
     if 'dk' in  ds:
         ds = ds.drop('dk')
     if 'k' in ds:
         ds = ds.drop('k')
+
     return ds
 
 # reference_oswK_1145m_60pts
@@ -74,7 +76,7 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
             if os.path.exists(file_dest) and redo is False:
                 logging.info('%s already exists -> skip and continue the daily loop',file_dest)
                 continue
-            lst_files_measu_to_read = glob.glob(pat)[0:3000] # for dev !!!!!!!!!!!
+            lst_files_measu_to_read = glob.glob(pat)#[0:3000] # for dev !!!!!!!!!!!
             logging.info('nb files for daily %s : %s',dd,len(lst_files_measu_to_read))
             if len(lst_files_measu_to_read)>0:
                 #print('file_dest',file_dest,'daily',dd)
@@ -94,137 +96,155 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                 #     pass
                 src = xarray.open_mfdataset(lst_files_measu_to_read,combine='by_coords',concat_dim='time',
                                             preprocess=prep,cache=True,decode_times=True) #,preprocess=None
-                src = src.assign_coords({'k':kref})
-                logging.info('src: %s',src)
-                #with Dataset(file_src) as fs, h5py.File(file_dest, 'w') as fd:
-                # Check input file.
-                #src = fs.variables
-                with h5py.File(file_dest, 'w') as fd:
-                    for k in keys:
-                        if k not in src:
-                            raise IOError(f'Variable {k} not found in input file.')
-                    num_examples = src[keys[0]].shape[0]
-                    print(f'Found {num_examples} events.')
+                dropIM = np.amax(src['crossSpectraImPol'],axis=(1,2)) < preprocess.PERCENTILE_99['im']
+                dropRE = np.amax(src['crossSpectraRePol'],axis=(1,2)) < preprocess.PERCENTILE_99['re']
+                taille_base = len(src['timeSAR'])
+                src = src.where(dropIM,drop=True)
+                ds_after_im = len(src['timeSAR'])
+                if taille_base > ds_after_im :
+                    logging.info('ds remove Im too high : %s -> %s',taille_base,ds_after_im)
+                    logging.info('droped dd %s',dd)
+                src = src.where(dropRE,drop=True)
+                ds_after_re = len(src['timeSAR'])
+                if ds_after_im > ds_after_re :
+                    logging.info('ds remove Im too high : %s -> %s',ds_after_im,ds_after_re)
+                    logging.info('droped dd %s',dd)
 
-                    # Get 22 CWAVE features. Concatenate 20 parameters with sigma0 and normVar.
-                    #src['S'].set_auto_scale(False) # Some of the NetCDF4 files had some weird scaling.
-                    S = np.array(src['py_S'].values) #* float(src['py_S'].scale_factor))
-                    cwave = np.hstack([S, src['sigma0'].values.reshape(-1,1), src['normalizedVariance'].values.reshape(-1,1)])
-                    #cwave = src['cwave'][:]
-                    cwave = preprocess.conv_cwave(cwave) # Remove extrema, then standardize with hardcoded mean, vars.
-                    fd.create_dataset('cwave', data=cwave)
+                if len(src['timeSAR'])>0:
+                    src = src.assign_coords({'k':kref})
+                    logging.info('src: %s',src)
+                    #with Dataset(file_src) as fs, h5py.File(file_dest, 'w') as fd:
+                    # Check input file.
+                    #src = fs.variables
+                    with h5py.File(file_dest, 'w') as fd:
+                        for k in keys:
+                            if k not in src:
+                                raise IOError(f'Variable {k} not found in input file.')
+                        num_examples = src[keys[0]].shape[0]
+                        print(f'Found {num_examples} events.')
 
-                    #add cwave from OCN (to comapre)
-                    Socn = np.array(src['S'].values)  # * float(src['py_S'].scale_factor))
-                    cwave_ocn = np.hstack(
-                        [Socn,src['sigma0'].values.reshape(-1,1),src['normalizedVariance'].values.reshape(-1,1)])
-                    # cwave = src['cwave'][:]
-                    cwave_ocn = preprocess.conv_cwave(cwave_ocn)  # Remove extrema, then standardize with hardcoded mean, vars.
-                    fd.create_dataset('cwave_ocn',data=cwave_ocn)
+                        # Get 22 CWAVE features. Concatenate 20 parameters with sigma0 and normVar.
+                        #src['S'].set_auto_scale(False) # Some of the NetCDF4 files had some weird scaling.
+                        S = np.array(src['py_S'].values) #* float(src['py_S'].scale_factor))
+                        cwave = np.hstack([S, src['sigma0'].values.reshape(-1,1), src['normalizedVariance'].values.reshape(-1,1)])
+                        #cwave = src['cwave'][:]
+                        cwave = preprocess.conv_cwave(cwave) # Remove extrema, then standardize with hardcoded mean, vars.
+                        fd.create_dataset('cwave', data=cwave)
 
-                    # Observation meta data.
-                    latSAR, lonSAR = src['latSAR'].values, src['lonSAR'].values
-                    latSARcossin = preprocess.conv_position(latSAR) # Computes cos and sin used by NN.
-                    lonSARcossin = preprocess.conv_position(lonSAR)
-                    #latlonSARcossin = src['latlonSARcossin'].values
-                    fd.create_dataset('latlonSAR', data=np.column_stack([latSAR, lonSAR]))
-                    fd.create_dataset('latlonSARcossin', data=np.hstack([latSARcossin, lonSARcossin]))
-                    #fd.create_dataset('latlonSARcossin', data=latlonSARcossin)
+                        #add cwave from OCN (to comapre)
+                        Socn = np.array(src['S'].values)  # * float(src['py_S'].scale_factor))
+                        cwave_ocn = np.hstack(
+                            [Socn,src['sigma0'].values.reshape(-1,1),src['normalizedVariance'].values.reshape(-1,1)])
+                        # cwave = src['cwave'][:]
+                        cwave_ocn = preprocess.conv_cwave(cwave_ocn)  # Remove extrema, then standardize with hardcoded mean, vars.
+                        fd.create_dataset('cwave_ocn',data=cwave_ocn)
 
-                    timeSAR = src['timeSAR'].values
-                    unit = 'hours since 2010-01-01T00:00:00Z UTC' #asked by P.Sadowsky routine
-                    logging.info("timeSAr units: %s",unit)
-                    time_num = []
-                    for tti in timeSAR:
-                        ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1,'s')
-                        ts2 =  datetime.datetime.utcfromtimestamp(ts)
-                        tnum = netCDF4.date2num(ts2,unit)
-                        time_num.append(tnum)
-                    timeSAR = np.array(time_num)
+                        # Observation meta data.
+                        latSAR, lonSAR = src['latSAR'].values, src['lonSAR'].values
+                        latSARcossin = preprocess.conv_position(latSAR) # Computes cos and sin used by NN.
+                        lonSARcossin = preprocess.conv_position(lonSAR)
+                        #latlonSARcossin = src['latlonSARcossin'].values
+                        fd.create_dataset('latlonSAR', data=np.column_stack([latSAR, lonSAR]))
+                        fd.create_dataset('latlonSARcossin', data=np.hstack([latSARcossin, lonSARcossin]))
+                        #fd.create_dataset('latlonSARcossin', data=latlonSARcossin)
 
-                    # idem for timeALT
-                    timeALT = src['timeALT'].values  # added by agrouaze
-                    time_num = []
-                    for tti in timeALT :
-                        ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1,'s')
-                        ts2 = datetime.datetime.utcfromtimestamp(ts)
-                        tnum = netCDF4.date2num(ts2,unit)
-                        time_num.append(tnum)
-                    timeALT = np.array(time_num)
-                    #timeSAR = np.datetime64(timeSAR.astype('float'),'s')
-                    logging.info('timeSAR %s %s',timeSAR[0],type(timeSAR[0]))
-                    todSAR = preprocess.conv_time(timeSAR)
-                    #todSAR = src['todSAR'].values
-                    fd.create_dataset('timeSAR', data=timeSAR, shape=(timeSAR.shape[0], 1))
-                    fd.create_dataset('todSAR', data=todSAR, shape=(todSAR.shape[0], 1))
+                        timeSAR = src['timeSAR'].values
+                        unit = 'hours since 2010-01-01T00:00:00Z UTC' #asked by P.Sadowsky routine
+                        logging.info("timeSAr units: %s",unit)
+                        time_num = []
+                        for tti in timeSAR:
+                            ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1,'s')
+                            ts2 =  datetime.datetime.utcfromtimestamp(ts)
+                            tnum = netCDF4.date2num(ts2,unit)
+                            time_num.append(tnum)
+                        timeSAR = np.array(time_num)
 
-                    incidence = preprocess.conv_incidence(src['incidenceAngle'].values) # Separates into 2 var.
-                    fd.create_dataset('incidence', data=incidence)
+                        # idem for timeALT
+                        timeALT = src['timeALT'].values  # added by agrouaze
+                        time_num = []
+                        for tti in timeALT :
+                            ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1,'s')
+                            ts2 = datetime.datetime.utcfromtimestamp(ts)
+                            tnum = netCDF4.date2num(ts2,unit)
+                            time_num.append(tnum)
+                        timeALT = np.array(time_num)
+                        #timeSAR = np.datetime64(timeSAR.astype('float'),'s')
+                        logging.info('timeSAR %s %s',timeSAR[0],type(timeSAR[0]))
+                        todSAR = preprocess.conv_time(timeSAR)
+                        #todSAR = src['todSAR'].values
+                        fd.create_dataset('timeSAR', data=timeSAR, shape=(timeSAR.shape[0], 1))
+                        fd.create_dataset('todSAR', data=todSAR, shape=(todSAR.shape[0], 1))
 
-                    satellite_indicator = np.ones((src['timeSAR'].shape[0], 1), dtype=float) * satellite
-                    fd.create_dataset('satellite', data=satellite_indicator, shape=(satellite_indicator.shape[0], 1))
+                        incidence = preprocess.conv_incidence(src['incidenceAngle'].values) # Separates into 2 var.
+                        fd.create_dataset('incidence', data=incidence)
 
-                    # Spectral data.
-                    logging.debug('x spec Re: %s',src['crossSpectraRePol'].values.shape)
-                    tmpre = src['crossSpectraRePol'].values.squeeze()
-                    tmpre = np.swapaxes(tmpre,1,2)
-                    tmpim = src['crossSpectraImPol'].values.squeeze()
-                    tmpim = np.swapaxes(tmpim,1,2)
-                    logging.debug('tmpre : %s',tmpre.shape)
-                    re = preprocess.conv_real(tmpre,exp_id=1)
-                    im = preprocess.conv_imaginary(tmpim,exp_id=1)
-                    x = np.stack((re, im), axis=3)
-                    logging.debug('spectrum : %s',x.shape)
-                    fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
+                        satellite_indicator = np.ones((src['timeSAR'].shape[0], 1), dtype=float) * satellite
+                        fd.create_dataset('satellite', data=satellite_indicator, shape=(satellite_indicator.shape[0], 1))
 
-                    # add spectral data OCN
-                    logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
-                    tmpre = src['cspcRe'].values.squeeze()
-                    #tmpre = np.swapaxes(tmpre,1,2)
-                    tmpim = src['cspcIm'].values.squeeze()
-                    #tmpim = np.swapaxes(tmpim,1,2)
-                    logging.debug('tmpre : %s',tmpre.shape)
-                    re_ocn = preprocess.conv_real(tmpre,exp_id=1)
-                    im_ocn = preprocess.conv_imaginary(tmpim,exp_id=1)
-                    x_ocn = np.stack((re_ocn,im_ocn),axis=3)
-                    logging.debug('spectrum : %s',x_ocn.shape)
-                    fd.create_dataset('spectrum_ocn',
-                                      data=x_ocn)  # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
+                        # Spectral data.
+                        logging.debug('x spec Re: %s',src['crossSpectraRePol'].values.shape)
+                        tmpre = src['crossSpectraRePol'].values.squeeze()
+                        tmpre = np.swapaxes(tmpre,1,2)
+                        tmpim = src['crossSpectraImPol'].values.squeeze()
+                        tmpim = np.swapaxes(tmpim,1,2)
+                        logging.debug('tmpre : %s',tmpre.shape)
+                        re = preprocess.conv_real(tmpre,exp_id=1)
+                        im = preprocess.conv_imaginary(tmpim,exp_id=1)
+                        x = np.stack((re, im), axis=3)
+                        logging.debug('spectrum : %s',x.shape)
+                        fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
 
-                    # Altimeter features.
-                    hsALT = src['hsALT'].values
-                    fd.create_dataset('hsALT', data=hsALT, shape=(hsALT.shape[0], 1))
-                    dx = preprocess.conv_dx(src['dx'].values)
-                    dt = preprocess.conv_dt(src['dt'].values)
-                    fd.create_dataset('dxdt', data=np.column_stack([dx, dt]))
+                        # add spectral data OCN
+                        logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
+                        tmpre = src['cspcRe'].values.squeeze()
+                        #tmpre = np.swapaxes(tmpre,1,2)
+                        tmpim = src['cspcIm'].values.squeeze()
+                        #tmpim = np.swapaxes(tmpim,1,2)
+                        logging.debug('tmpre : %s',tmpre.shape)
+                        re_ocn = preprocess.conv_real(tmpre,exp_id=1)
+                        im_ocn = preprocess.conv_imaginary(tmpim,exp_id=1)
+                        x_ocn = np.stack((re_ocn,im_ocn),axis=3)
+                        logging.debug('spectrum : %s',x_ocn.shape)
+                        fd.create_dataset('spectrum_ocn',
+                                          data=x_ocn)  # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
+
+                        # Altimeter features.
+                        hsALT = src['hsALT'].values
+                        fd.create_dataset('hsALT', data=hsALT, shape=(hsALT.shape[0], 1))
+                        dx = preprocess.conv_dx(src['dx'].values)
+                        dt = preprocess.conv_dt(src['dt'].values)
+                        fd.create_dataset('dxdt', data=np.column_stack([dx, dt]))
 
 
-                    fd.create_dataset('timeALT',data=timeALT, shape=(todSAR.shape[0], 1))
+                        fd.create_dataset('timeALT',data=timeALT, shape=(todSAR.shape[0], 1))
 
-                    lonALT = src['lonALT'].values #added by agrouaze
-                    fd.create_dataset('lonALT', data=lonALT)
+                        lonALT = src['lonALT'].values #added by agrouaze
+                        fd.create_dataset('lonALT', data=lonALT)
 
-                    latALT = src['latALT'].values #added by agrouaze
-                    fd.create_dataset('latALT', data=latALT)
+                        latALT = src['latALT'].values #added by agrouaze
+                        fd.create_dataset('latALT', data=latALT)
 
-                    fd.create_dataset('hsSM', data=src['hsSM'].values) #added by agrouaze
-                    fd.create_dataset('nk', data=src['nk'].values) #added by agrouaze
-                    fd.create_dataset('dx', data=src['dx'].values) #added by agrouaze
-                    fd.create_dataset('dt', data=src['dt'].values) #added by agrouaze
-                    fd.create_dataset('sigma0', data=src['sigma0'].values) #added by agrouaze
-                    fd.create_dataset('normalizedVariance', data=src['normalizedVariance'].values) #added by agrouaze
-                    fd.create_dataset('incidenceAngle', data=src['incidenceAngle'].values) #added by agrouaze
-                    fd.create_dataset('lonSAR', data=src['lonSAR'].values) #added by agrouaze
-                    fd.create_dataset('latSAR', data=src['latSAR'].values) #added by agrouaze
-                    fd.create_dataset('cspcRe_slc', data=src['crossSpectraRePol'].values) #added by agrouaze
-                    fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
-                    fd.create_dataset('cspcRe_ocn',data=src['cspcRe'].values)  # added by agrouaze
-                    fd.create_dataset('cspcIm_ocn',data=src['cspcIm'].values)  # added by agrouaze
-                    fd.create_dataset('py_S', data=S) #added by agrouaze
-                    fd.create_dataset('py_S_ocn',data=Socn)  # added by agrouaze
-                    #fd.close()
-                print('elapsed time to build %s: %1.3f seconds'%(file_dest,time.time()-t0))
-                logging.info('file written %s',os.path.exists(file_dest))
+                        fd.create_dataset('hsSM', data=src['hsSM'].values) #added by agrouaze
+                        fd.create_dataset('nk', data=src['nk'].values) #added by agrouaze
+                        fd.create_dataset('dx', data=src['dx'].values) #added by agrouaze
+                        fd.create_dataset('dt', data=src['dt'].values) #added by agrouaze
+                        fd.create_dataset('sigma0', data=src['sigma0'].values) #added by agrouaze
+                        fd.create_dataset('normalizedVariance', data=src['normalizedVariance'].values) #added by agrouaze
+                        fd.create_dataset('incidenceAngle', data=src['incidenceAngle'].values) #added by agrouaze
+                        fd.create_dataset('lonSAR', data=src['lonSAR'].values) #added by agrouaze
+                        fd.create_dataset('latSAR', data=src['latSAR'].values) #added by agrouaze
+                        fd.create_dataset('cspcRe_slc', data=src['crossSpectraRePol'].values) #added by agrouaze
+                        fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
+                        fd.create_dataset('cspcRe_ocn',data=src['cspcRe'].values)  # added by agrouaze
+                        fd.create_dataset('cspcIm_ocn',data=src['cspcIm'].values)  # added by agrouaze
+                        fd.create_dataset('py_S', data=S) #added by agrouaze
+                        fd.create_dataset('py_S_ocn',data=Socn)  # added by agrouaze
+                        #fd.close()
+                    #check open the new file
+                    test_post_write = h5py.File(file_dest,'r')
+                    test_post_write.close()
+                    print('elapsed time to build %s: %1.3f seconds'%(file_dest,time.time()-t0))
+                    logging.info('file written %s',os.path.exists(file_dest))
 
 if __name__ == '__main__':
     root = logging.getLogger ()
@@ -238,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument ('--verbose',action='store_true',default=False)
     parser.add_argument ('--startdate',action='store',help='YYYYMMDD',required=True)
     parser.add_argument ('--stopdate',action='store',help='YYYYMMDD.',required=True)
-
+    parser.add_argument('--redo',action='store_true',default=False,required=False,help='redo existing output files')
     args = parser.parse_args ()
 
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
@@ -251,10 +271,18 @@ if __name__ == '__main__':
                             datefmt='%d/%m/%Y %H:%M:%S')
     t0 = time.time ()
     in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v2/'
+    in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3/'
     out_dd = '/home1/scratch/agrouaze/training_quach_redo_model/exp1/daily_normalized'
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm'
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v2'
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v3'
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v4'
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v5' # 99 percentil
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v6' # 99% + correction of droped colocs
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v7' # 99% + correction of droped + fix multi successive norm
     logging.info('input dir %s',in_dd)
     logging.info('output dir : %s',out_dd)
     normalize_training_ds(sta=datetime.datetime.strptime(args.startdate,'%Y%m%d'),
-                          sto=datetime.datetime.strptime(args.stopdate,'%Y%m%d'),in_dd=in_dd,out_dd=out_dd,redo=False)
+                          sto=datetime.datetime.strptime(args.stopdate,'%Y%m%d'),in_dd=in_dd,out_dd=out_dd,redo=args.redo)
     logging.info('done in %1.3f min',(time.time()-t0)/60.)
     logging.info('peak memory usage: %s Mbytes',resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.)

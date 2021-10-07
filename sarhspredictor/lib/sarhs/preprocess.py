@@ -1,6 +1,6 @@
 # Define utility functions for preprocessing SAR data.
 import numpy as np
-
+PERCENTILE_99 = {'re':4715029695.5043869,'im':595082012.33398867}
 def _conv_timeofday(in_t):
     """Converts data acquisition time
     Args:
@@ -39,7 +39,11 @@ def conv_real(x,exp_id=None):
     elif exp_id==1:
         #x = x / 1150179.354676391 # le min etant en e-30 je me permet de ne pas le remettre a zero (tested in stats_dataset_training_exp1.ipynb)
         #x = x / 266297713.37484202
-        x = x /268312468.14585936
+        #x = x /268312468.14585936
+        #x = x / 2106218840.5231066 #update 27 sept a partir des spectre SLC dans la v3 des fichiers individuels pour generer D1 (stats_dataset_training_exp1.ipynb)
+        #x = x / 9618124186.148272 # update 1st oct 2021 apres investigation complete de 2018 dataset brut
+        #x = x / 2.83349121369e+14 # update 4th oct 2021 apres investigattion complete de tout le dataset
+        x = x / PERCENTILE_99['re'] # 99 percentile
     else:
         raise Exception('unkown exp_id %s'%exp_id)
 
@@ -58,7 +62,11 @@ def conv_imaginary(x,exp_id=None):
         x = (x - 4.878463e-08) / 6.4714637
     elif exp_id == 1: #evaluate in stats_dataset_training_exp1.ipynb
         #x = x / 330446.8692954672  # le min etant en e-30 je me permet de ne pas le remettre a zero
-        x = x/6605101.291873287
+        #x = x/6605101.291873287
+        #x = x/156310666.1937346 #update 27 sept a partir des spectre SLC dans la v3 des fichiers individuels pour generer D1 (stats_dataset_training_exp1.ipynb) (2287 spectres sample)
+        #x = x / 863468236.6305181 # update 1st oct 2021 apres investigation complete du dataset brut
+        #x = x / 1.52703468968e+11 # update 4th oct 2021 apres investigattion complete de tout le dataset
+        x = x / PERCENTILE_99['im'] # 99 percentile
     else :
         raise Exception('unkown exp_id %s' % exp_id)
 

@@ -3,6 +3,7 @@ need to do groups in the fat aggregated training dataset( alti+SAr Cwave params)
 copy paste from https://github.com/hawaii-ai/SAR-Wave-Height/blob/master/scripts/create_dataset.ipynb
 April 2021
 A Grouazel
+env used so far: jupyter-tensorflow-ric -> /appli/conda-env/jupyterhub-tensorflow/bin/python
 
 """
 import numpy as np
@@ -11,6 +12,7 @@ import h5py
 import pandas as pd
 #from tqdm import tqdm
 import os, sys
+sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn')
 import logging
 from sarhspredictor.lib.sarhs import preprocess
 
@@ -169,10 +171,10 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             logging.info('indices sum after sat : %s',indices.sum())
             indices[np.isnan(fs['hsALT'][:].squeeze())] = 0
             logging.info('indices sum after hsalt : %s',indices.sum())
-            logging.info('cspcIm shape : %s',fs['cspcIm'][:].shape)
-            indices[np.any(np.any(np.isnan(fs['cspcIm'][:]),axis=2),axis=1)] = 0
+            logging.info('cspcIm_slc shape : %s',fs['cspcIm_slc'][:].shape)
+            indices[np.any(np.any(np.isnan(fs['cspcIm_slc'][:]),axis=2),axis=1)] = 0
             logging.info('indices sum after Im : %s',indices.sum())
-            indices[np.any(np.any(np.isnan(fs['cspcRe'][:]),axis=2),axis=1)] = 0
+            indices[np.any(np.any(np.isnan(fs['cspcRe_slc'][:]),axis=2),axis=1)] = 0
             logging.info('indices sum after Re : %s',indices.sum())
             # Done
             num_examples = indices.sum()
@@ -187,8 +189,11 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             #cwave = np.hstack([fs['py_S'][indices,...],fs['sigma0'][indices].reshape(-1,1),
             #                   fs['normalizedVariance'][indices].reshape(-1,1)])
             #cwave = preprocess.conv_cwave(cwave)  # Remove extrema, then standardize with hardcoded mean,vars.
-            cwave = fs['cwave'][indices,...]
-            grp.create_dataset('cwave',data=cwave)
+            cwave_ocn = fs['cwave_ocn'][indices,...]
+            grp.create_dataset('cwave_ocn',data=cwave_ocn)
+
+            cwave_slc = fs['cwave'][indices,...]
+            grp.create_dataset('cwave_slc',data=cwave_slc)
 
             # Additional features.
             dx = preprocess.conv_dx(fs['dx'][indices]) #I keep the normalisation here for dx and dt
@@ -219,17 +224,31 @@ def split_aggregated_ds_v2(file_src,file_dest,test2015=False,exp_id=1):
             grp.create_dataset('hsALT',data=hsALT,shape=(hsALT.shape[0],1))
 
             # Get spectral data.
-            logging.info('fs[cspcRe] : %s',fs['cspcRe'].shape)
-            tmpRe = fs['cspcRe'][indices,...].squeeze()
+            logging.info('fs[cspcRe_slc] : %s',fs['cspcRe_slc'].shape)
+            tmpRe_slc = fs['cspcRe_slc'][indices,...].squeeze()
             #tmpRe = np.swapaxes(tmpRe,1,2)
-            tmpIm = fs['cspcIm'][indices,...].squeeze()
-            #tmpIm = np.swapaxes(tmpIm,1,2)
-            logging.info('tmpIm : %s',tmpIm.shape)
-            x = np.stack((preprocess.conv_real(tmpRe,exp_id=1),
-                          preprocess.conv_imaginary(tmpIm,exp_id=1),
+            tmpRe_slc = np.swapaxes(tmpRe_slc,1,2)
+            tmpIm_slc = fs['cspcIm_slc'][indices,...].squeeze()
+            tmpIm_slc = np.swapaxes(tmpIm_slc,1,2)
+            logging.info('tmpIm_slc : %s',tmpIm_slc.shape)
+            x = np.stack((preprocess.conv_real(tmpRe_slc,exp_id=1),
+                          preprocess.conv_imaginary(tmpIm_slc,exp_id=1),
                           ),
                          axis=3)
-            grp.create_dataset('spectrum',data=x)
+            grp.create_dataset('spectrum_slc',data=x)
+
+            # Get spectral data.
+            logging.info('fs[cspcRe_ocn] : %s',fs['cspcRe_ocn'].shape)
+            tmpRe = fs['cspcRe_ocn'][indices,...].squeeze()
+            # tmpRe = np.swapaxes(tmpRe,1,2)
+            tmpIm = fs['cspcIm_ocn'][indices,...].squeeze()
+            # tmpIm = np.swapaxes(tmpIm,1,2)
+            logging.info('tmpIm : %s',tmpIm.shape)
+            x_ocn = np.stack((preprocess.conv_real(tmpRe,exp_id=None),
+                          preprocess.conv_imaginary(tmpIm,exp_id=None),
+                          ),
+                         axis=3)
+            grp.create_dataset('spectrum_ocn',data=x_ocn)
             #print(f'Done with {months}')
             logging.info('Done with %s',years)
     logging.info('Done')
@@ -358,8 +377,8 @@ def split_aggregated_ds_v3(file_src,file_dest,exp_id=1):
             tmpIm_ocn = fs['cspcIm_ocn'][indices,...].squeeze()
             #tmpIm = np.swapaxes(tmpIm,1,2)
             logging.info('tmpIm : %s',tmpIm_ocn.shape)
-            x_ocn = np.stack((preprocess.conv_real(tmpRe_ocn,exp_id=exp_id),
-                          preprocess.conv_imaginary(tmpIm_ocn,exp_id=exp_id),
+            x_ocn = np.stack((preprocess.conv_real(tmpRe_ocn,exp_id=None), #I set None for exp_id since foe the OCN spectra the preprocessing is the same
+                          preprocess.conv_imaginary(tmpIm_ocn,exp_id=None),
                           ),
                          axis=3)
             grp.create_dataset('spectrum_ocn',data=x_ocn)
@@ -383,3 +402,40 @@ def split_aggregated_ds_v3(file_src,file_dest,exp_id=1):
     except:
         logging.info('tried to close file dest handler unsuccessfuly (may be already closed)')
     logging.info('Done')
+
+if __name__ =='__main__':
+    # the training dataset must be separated into sub groups
+    # long long task (about 30min) lots of memory
+    import logging
+    import time
+    import argparse
+    tinit = time.time()
+    root = logging.getLogger()
+    if root.handlers :
+        for handler in root.handlers :
+            root.removeHandler(handler)
+
+    parser = argparse.ArgumentParser(description='main')
+    parser.add_argument('--verbose',action='store_true',default=False)
+    args = parser.parse_args()
+    fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
+    if args.verbose :
+        logging.basicConfig(level=logging.DEBUG,format=fmt,
+                            datefmt='%d/%m/%Y %H:%M:%S')
+    else :
+        logging.basicConfig(level=logging.INFO,format=fmt,
+                            datefmt='%d/%m/%Y %H:%M:%S')
+    import time
+    file_src2 = os.path.join('/home1/scratch/agrouaze/training_quach_redo_model/exp1',"aggregated_test_toto.h5")
+    print('source ',file_src2)
+    file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1.h5'
+    file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1_per_year.h5'
+    file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1_per_year_v21sept2021.h5'
+    file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1_per_year_v5oct2021.h5'
+    file_dest2 = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/D1_v2_v5oct2021.h5'
+    if os.path.exists(file_dest2) :
+        os.remove(file_dest2)
+    t0 = time.time()
+    split_aggregated_ds_v2(file_src2,file_dest2,test2015=False,exp_id=1)
+    # split_aggregated_into_groups.split_aggregated_ds_v3(file_src2,file_dest2,exp_id=1) # split 80% 20%
+    logging.info('done in %1.3f seconds',time.time() - t0)

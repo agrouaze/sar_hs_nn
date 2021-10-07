@@ -15,7 +15,10 @@ from sarhspredictor.lib.sarhs import preprocess
 from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 from sarhspredictor.lib.apply_oswK_patch import patch_oswK
 from sarhspredictor.lib.reference_oswk import   reference_oswK_1145m_60pts
-from get_L2_footprint import get_bbox,get_footprint #mpc/data_collect
+try:
+    from get_L2_footprint import get_bbox,get_footprint #mpc/data_collect
+except:
+    pass
 def preproc_ocn_wv(ds):
     """
     read and preprocess data for training/usage of the model

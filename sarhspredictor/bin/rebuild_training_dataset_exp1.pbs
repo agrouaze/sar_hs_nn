@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-#PBS -l walltime=06:00:05
-#PBS -l mem=19gb
+#PBS -l walltime=06:50:05
+#PBS -l mem=21gb
 #PBS -N exp1NN
 #PBS -m n
 echo "Hello ${1}"
+# 21Go takes into account for 2 coloc with the same sar measurement
 # parallelisation a 60 sur datarmor avec 1 compte 19Go RAM et 06h par sub job de 18 tiff (6h ca fait bcp)
+# parallelisation a 54 sur datarmor avec 1 compte 21Go RAM et 06h20 par sub job de 18 tiff
 #version pour exploit airflow PRUN daily computation with user satwave
 myvariable=$(whoami)
 
@@ -25,6 +27,6 @@ export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect/:$PYTHONPATH
 #  export PYTHONPATH=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/:$PYTHONPATH
 #  pyexe=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/cfoscatcalval/src/MLE_aggregation_per_day_L2B.py
 #fi
-$pybin $pyexe --slc ${1} --ocn ${2} --redo
+$pybin $pyexe --slc ${1} --ocn ${2}
 echo end of python script exe
 exit 0
