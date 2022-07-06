@@ -1,8 +1,10 @@
 # Reads NetCDF4 file, preprocesses data, and writes hdf5 file.
 # This is much simpler than aggregating multiple files, then
 # performing preprocessing.
-# Author: Peter Sadowski, Dec 2020
+# Author: Antoine Grouazel Oct 2021 (inspired from Peter Sadowski script)
+# env : xsarQuach2020
 import os, sys, h5py
+sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn/')
 import numpy as np
 import glob
 import time
@@ -69,7 +71,7 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
             #pat = os.path.join(in_dd,mm.strftime('%Y'),'*','training_'+sat.lower()+'*vv-%s*.nc'%mm.strftime('%Y%m'))
             pat = os.path.join(in_dd,dd.strftime('%Y'),'*',
                                'training_' + sat.lower() + '*vv-%s*.nc' % dd.strftime('%Y%m%d'))
-            file_dest = os.path.join(out_dd,sat+'_training_exp1_Hs_NN_regression_%s.h5'%dd.strftime('%Y%m%d'))
+            file_dest = os.path.join(out_dd,sat+'_training_exp1v4_Hs_NN_regression_%s.h5'%dd.strftime('%Y%m%d'))
             if os.path.exists(file_dest) and redo is True:
                 os.remove(file_dest)
                 logging.info('remove existing output file : %s',file_dest)
@@ -84,10 +86,10 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                     os.makedirs(os.path.dirname(file_dest))
                     #print('outputdir mkdir')
                 # These variables are expected in the source file.
-                keys = ['timeSAR', 'lonSAR',  'latSAR', 'incidenceAngle', 'crossSpectraRePol', 'crossSpectraImPol',
-                        'py_S','sigma0','normalizedVariance'] # Needed for predictions.
-                keys_ocn = ['S','cspcRe','cspcIm']
-                keys = keys+keys_ocn # added to have both slc and ocn in the same dataset (July 21)
+                keys = ['timeSAR', 'lonSAR',  'latSAR', 'incidenceAngle', 'crossSpectraRePol', 'crossSpectraImPol'
+                        ,'sigma0','normalizedVariance'] # Needed for predictions.
+                #keys_ocn = ['S','cspcRe','cspcIm']
+                keys = keys # added to have both slc and ocn in the same dataset (July 21)
                 t0 = time.time()
                 # try:
                 #     h5py.File(file_dest, 'r').close() #try to close the file if it is opened before
@@ -125,19 +127,19 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
 
                         # Get 22 CWAVE features. Concatenate 20 parameters with sigma0 and normVar.
                         #src['S'].set_auto_scale(False) # Some of the NetCDF4 files had some weird scaling.
-                        S = np.array(src['py_S'].values) #* float(src['py_S'].scale_factor))
-                        cwave = np.hstack([S, src['sigma0'].values.reshape(-1,1), src['normalizedVariance'].values.reshape(-1,1)])
+                        #S = np.array(src['py_S'].values) #* float(src['py_S'].scale_factor))
+                        #cwave = np.hstack([S, src['sigma0'].values.reshape(-1,1), src['normalizedVariance'].values.reshape(-1,1)])
                         #cwave = src['cwave'][:]
-                        cwave = preprocess.conv_cwave(cwave) # Remove extrema, then standardize with hardcoded mean, vars.
-                        fd.create_dataset('cwave', data=cwave)
+                        #cwave = preprocess.conv_cwave(cwave) # Remove extrema, then standardize with hardcoded mean, vars.
+                        #fd.create_dataset('cwave', data=cwave)
 
                         #add cwave from OCN (to comapre)
-                        Socn = np.array(src['S'].values)  # * float(src['py_S'].scale_factor))
-                        cwave_ocn = np.hstack(
-                            [Socn,src['sigma0'].values.reshape(-1,1),src['normalizedVariance'].values.reshape(-1,1)])
-                        # cwave = src['cwave'][:]
-                        cwave_ocn = preprocess.conv_cwave(cwave_ocn)  # Remove extrema, then standardize with hardcoded mean, vars.
-                        fd.create_dataset('cwave_ocn',data=cwave_ocn)
+                        # Socn = np.array(src['S'].values)  # * float(src['py_S'].scale_factor))
+                        # cwave_ocn = np.hstack(
+                        #     [Socn,src['sigma0'].values.reshape(-1,1),src['normalizedVariance'].values.reshape(-1,1)])
+                        # # cwave = src['cwave'][:]
+                        # cwave_ocn = preprocess.conv_cwave(cwave_ocn)  # Remove extrema, then standardize with hardcoded mean, vars.
+                        # fd.create_dataset('cwave_ocn',data=cwave_ocn)
 
                         # Observation meta data.
                         latSAR, lonSAR = src['latSAR'].values, src['lonSAR'].values
@@ -151,13 +153,15 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                         timeSAR = src['timeSAR'].values
                         unit = 'hours since 2010-01-01T00:00:00Z UTC' #asked by P.Sadowsky routine
                         logging.info("timeSAr units: %s",unit)
-                        time_num = []
+                        doys = []
                         for tti in timeSAR:
                             ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1,'s')
                             ts2 =  datetime.datetime.utcfromtimestamp(ts)
-                            tnum = netCDF4.date2num(ts2,unit)
-                            time_num.append(tnum)
-                        timeSAR = np.array(time_num)
+                            doy = int(ts2.strftime('%j'))
+                            #tnum = netCDF4.date2num(ts2,unit)
+                            #time_num.append(tnum)
+                            doys.append(doy)
+                        timeSAR = np.array(doys)
 
                         # idem for timeALT
                         timeALT = src['timeALT'].values  # added by agrouaze
@@ -169,23 +173,23 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                             time_num.append(tnum)
                         timeALT = np.array(time_num)
                         #timeSAR = np.datetime64(timeSAR.astype('float'),'s')
-                        logging.info('timeSAR %s %s',timeSAR[0],type(timeSAR[0]))
-                        todSAR = preprocess.conv_time(timeSAR)
+                        logging.info('timeSAR first value = %s %s',timeSAR[0],type(timeSAR[0]))
+                        doySAR = preprocess.conv_time_doy(timeSAR)
                         #todSAR = src['todSAR'].values
                         fd.create_dataset('timeSAR', data=timeSAR, shape=(timeSAR.shape[0], 1))
-                        fd.create_dataset('todSAR', data=todSAR, shape=(todSAR.shape[0], 1))
+                        fd.create_dataset('doySAR', data=doySAR, shape=(doySAR.shape[0], 1))
 
-                        incidence = preprocess.conv_incidence(src['incidenceAngle'].values) # Separates into 2 var.
+                        incidence = preprocess.conv_incidence_iw(src['incidenceAngle'].values) # Separates into 2 var.
                         fd.create_dataset('incidence', data=incidence)
 
-                        satellite_indicator = np.ones((src['timeSAR'].shape[0], 1), dtype=float) * satellite
-                        fd.create_dataset('satellite', data=satellite_indicator, shape=(satellite_indicator.shape[0], 1))
+                        #satellite_indicator = np.ones((src['timeSAR'].shape[0], 1), dtype=float) * satellite
+                        #fd.create_dataset('satellite', data=satellite_indicator, shape=(satellite_indicator.shape[0], 1))
 
                         # Spectral data.
                         logging.debug('x spec Re: %s',src['crossSpectraRePol'].values.shape)
-                        tmpre = src['crossSpectraRePol'].values.squeeze()
+                        tmpre = src['crossSpectraRePol'].values#.squeeze()
                         tmpre = np.swapaxes(tmpre,1,2)
-                        tmpim = src['crossSpectraImPol'].values.squeeze()
+                        tmpim = src['crossSpectraImPol'].values#.squeeze()
                         tmpim = np.swapaxes(tmpim,1,2)
                         logging.debug('tmpre : %s',tmpre.shape)
                         re = preprocess.conv_real(tmpre,exp_id=1)
@@ -195,28 +199,32 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                         fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
 
                         # add spectral data OCN
-                        logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
-                        tmpre = src['cspcRe'].values.squeeze()
-                        #tmpre = np.swapaxes(tmpre,1,2)
-                        tmpim = src['cspcIm'].values.squeeze()
-                        #tmpim = np.swapaxes(tmpim,1,2)
-                        logging.debug('tmpre : %s',tmpre.shape)
-                        re_ocn = preprocess.conv_real(tmpre,exp_id=1)
-                        im_ocn = preprocess.conv_imaginary(tmpim,exp_id=1)
-                        x_ocn = np.stack((re_ocn,im_ocn),axis=3)
-                        logging.debug('spectrum : %s',x_ocn.shape)
-                        fd.create_dataset('spectrum_ocn',
-                                          data=x_ocn)  # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
+                        # logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
+                        # tmpre = src['cspcRe'].values.squeeze()
+                        # #tmpre = np.swapaxes(tmpre,1,2)
+                        # tmpim = src['cspcIm'].values.squeeze()
+                        # #tmpim = np.swapaxes(tmpim,1,2)
+                        # logging.debug('tmpre : %s',tmpre.shape)
+                        # re_ocn = preprocess.conv_real(tmpre,exp_id=1)
+                        # im_ocn = preprocess.conv_imaginary(tmpim,exp_id=1)
+                        # x_ocn = np.stack((re_ocn,im_ocn),axis=3)
+                        # logging.debug('spectrum : %s',x_ocn.shape)
+                        # fd.create_dataset('spectrum_ocn',
+                        #                   data=x_ocn)  # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
 
                         # Altimeter features.
                         hsALT = src['hsALT'].values
                         fd.create_dataset('hsALT', data=hsALT, shape=(hsALT.shape[0], 1))
-                        dx = preprocess.conv_dx(src['dx'].values)
-                        dt = preprocess.conv_dt(src['dt'].values)
-                        fd.create_dataset('dxdt', data=np.column_stack([dx, dt]))
+
+                        # ajout Oct 2021: wind speed altimetric
+                        wsALT = src['wsALT'].values
+                        fd.create_dataset('wsALT',data=wsALT,shape=(wsALT.shape[0],1))
+                        #dx = preprocess.conv_dx(src['dx'].values)
+                        #dt = preprocess.conv_dt(src['dt'].values)
+                        #fd.create_dataset('dxdt', data=np.column_stack([dx, dt]))
 
 
-                        fd.create_dataset('timeALT',data=timeALT, shape=(todSAR.shape[0], 1))
+                        fd.create_dataset('timeALT',data=timeALT, shape=(doySAR.shape[0], 1))
 
                         lonALT = src['lonALT'].values #added by agrouaze
                         fd.create_dataset('lonALT', data=lonALT)
@@ -224,10 +232,10 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                         latALT = src['latALT'].values #added by agrouaze
                         fd.create_dataset('latALT', data=latALT)
 
-                        fd.create_dataset('hsSM', data=src['hsSM'].values) #added by agrouaze
+                        #fd.create_dataset('hsSM', data=src['hsSM'].values) #added by agrouaze
                         fd.create_dataset('nk', data=src['nk'].values) #added by agrouaze
-                        fd.create_dataset('dx', data=src['dx'].values) #added by agrouaze
-                        fd.create_dataset('dt', data=src['dt'].values) #added by agrouaze
+                        #fd.create_dataset('dx', data=src['dx'].values) #added by agrouaze
+                        #fd.create_dataset('dt', data=src['dt'].values) #added by agrouaze
                         fd.create_dataset('sigma0', data=src['sigma0'].values) #added by agrouaze
                         fd.create_dataset('normalizedVariance', data=src['normalizedVariance'].values) #added by agrouaze
                         fd.create_dataset('incidenceAngle', data=src['incidenceAngle'].values) #added by agrouaze
@@ -235,10 +243,10 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False):
                         fd.create_dataset('latSAR', data=src['latSAR'].values) #added by agrouaze
                         fd.create_dataset('cspcRe_slc', data=src['crossSpectraRePol'].values) #added by agrouaze
                         fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
-                        fd.create_dataset('cspcRe_ocn',data=src['cspcRe'].values)  # added by agrouaze
-                        fd.create_dataset('cspcIm_ocn',data=src['cspcIm'].values)  # added by agrouaze
-                        fd.create_dataset('py_S', data=S) #added by agrouaze
-                        fd.create_dataset('py_S_ocn',data=Socn)  # added by agrouaze
+                        #fd.create_dataset('cspcRe_ocn',data=src['cspcRe'].values)  # added by agrouaze
+                        #fd.create_dataset('cspcIm_ocn',data=src['cspcIm'].values)  # added by agrouaze
+                        #fd.create_dataset('py_S', data=S) #added by agrouaze
+                        #fd.create_dataset('py_S_ocn',data=Socn)  # added by agrouaze
                         #fd.close()
                     #check open the new file
                     test_post_write = h5py.File(file_dest,'r')
@@ -272,7 +280,7 @@ if __name__ == '__main__':
     t0 = time.time ()
     in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v2/'
     in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3/'
-    in_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v4/'
+    #in_dd = '/home1/scratch/agrouaze/test_D1v4' # finalement je peux repartir depuis le dataset d input D1v3, il ny a que la normalization et les variables dispo qui change...
     # out_dd = '/home1/scratch/agrouaze/training_quach_redo_model/exp1/daily_normalized'
     # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm'
     # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v2'
@@ -280,8 +288,10 @@ if __name__ == '__main__':
     # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v4'
     # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v5' # 99 percentil
     # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v6' # 99% + correction of droped colocs
-    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v7' # 99% + correction of droped + fix multi successive norm
-    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v4_norm_v1' # 99% + keep last v3 spec coeff for normalization
+    # out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3_norm_v7' # 99% + correction of droped + fix multi successive norm
+    # out_dd = '/home1/scratch/agrouaze/test_D1v4_norm'
+    # 11 oct D1v4 from raw colocs v3
+    out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v1_norm'
     logging.info('input dir %s',in_dd)
     logging.info('output dir : %s',out_dd)
     normalize_training_ds(sta=datetime.datetime.strptime(args.startdate,'%Y%m%d'),

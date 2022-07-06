@@ -1,16 +1,22 @@
-
+#!/home/datawork-cersat-public/project/mpc-sentinel1/workspace/conda/envs/satpy/bin/python
 """
 A Grouazel
 copy paste from https://github.com/hawaii-ai/SAR-Wave-Height/blob/master/scripts/aggregate.ipynb
-
-
+env : satpy ou xsar_pr46
+history:
+    06 may 2022: update of the script to run using xarray and produce a netCDF unique file
+info run: 1h15min sur noeud datarmor datamem1 avec 1754 files.
+    15 juin 2022: avec tte les variables CWAVE + HLF + spec OCN et SLC, ça dure 3,5heures -> 139 Go
 """
 # Reads NetCDF4 files and combines them into hdf5 file.
 # Author: Peter Sadowski, Dec 2020
+import xarray
 from netCDF4 import Dataset
 import numpy as np
 import glob
-import h5py
+#import h5py
+import sys
+import datetime
 import traceback
 import pandas as pd
 try:
@@ -35,7 +41,7 @@ def parse_filename ( filename ) :
     # platform,_alt,date,_ext = re.split('_|\.',filename)
     if 'exp1' in filename:
         platform,_,_,_,_,_,date,_ext = re.split('[_.]',filename)
-        assert _ext == 'h5',_ext
+        #assert _ext == 'h5',_ext
         logging.debug('date parsed: %s',date)
     else:
         platform,_alt,date,_,_ext = re.split('[_.]',filename)
@@ -117,17 +123,62 @@ def aggregate ( files_src,file_dest,keys=None ) :
             logging.error('impossible to read %s',filename)
             logging.error('traceback :%s', traceback.format_exc())
         logging.info('shape cspcRe_slc : %s shape timeALT %s',shapes['cspcRe_slc'],shapes['timeALT'])
+
+def preproc(ds):
+    filee = ds.encoding['source']
+    #print('filee',filee)
+    #print('sample',len(ds['nsample']))
+
+    meta = parse_filename(filee)
+    for vv in  ['satellite','year','month','day']:
+        ds[vv] = xarray.DataArray(meta[vv],coords={'nsample':ds['nsample'].values},dims=['nsample'])
+    ds = ds.rename({'nsample': 'time'})
+    #ds['time'].encoding['units'] = 'seconds since 2014-01-01 00:00:00'
+    #print(ds['time'].attrs)
+    #del ds['time'].attrs['units']
+    #ds['time'].attrs = {'units':'seconds since 2014-01-01 00:00:00'}
+    return ds
+
+def xarray_aggregate(input_files,file_dest,keys):
+    """
+
+    :param input_files:
+    :param file_dest:
+    :param keys:
+    :return:
+    """
+    ds = xarray.open_mfdataset(input_files,preprocess=preproc,combine='nested',concat_dim='time')
+    logging.info('ds : %s',ds)
+    #ds = ds[keys]
+     # commented to have all the variables
+    logging.info('start to write the destination file')
+    glob_attrs = {'agg_step_processing_method': xarray_aggregate.__name__,
+                  'agg_step_processing_script': os.path.basename(__file__),
+                  'agg_step_processing_env': sys.executable,
+                  'agg_step_processing_date': datetime.datetime.today().strftime('%Y%m%d %H:%M'),
+                  'agg_step_input_dir': os.path.dirname(input_files[0]),
+                  'agg_step_outputdir_dir': os.path.dirname(file_dest)
+                  }
+    for uu in ds.attrs:
+        glob_attrs['normalization_step_%s' % uu] = ds.attrs[uu]
+    ds.attrs = glob_attrs
+    ds.to_netcdf(file_dest,encoding={'time':{'units':'seconds since 2014-01-01 00:00:00'}})
+    logging.info('file_dest written : %s',file_dest)
+
             #raise mlfkgmk
 if __name__ == '__main__':
+    import time
     root = logging.getLogger()
     if root.handlers :
         for handler in root.handlers :
             root.removeHandler(handler)
     import argparse
-
+    example_inputdir = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v4_norm'
     parser = argparse.ArgumentParser(description='production of figures for cyclic reports CFOSAT SCAT')
     parser.add_argument('--verbose',action='store_true',default=False)
-    parser.add_argument('--outputdir',help='directory where the figures will be stored',required=True)
+    parser.add_argument('--dev', action='store_true', default=False,help='treat 10 input files just for test/dev')
+    parser.add_argument('--inputdir', help='directory where the input nc files are stored for instance %s'%example_inputdir, required=True)
+    parser.add_argument('--outputdir',help='directory where the output file will be stored',required=True)
 
     args = parser.parse_args()
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
@@ -137,22 +188,30 @@ if __name__ == '__main__':
     else :
         logging.basicConfig(level=logging.INFO,format=fmt,
                             datefmt='%d/%m/%Y %H:%M:%S')
-
+    t0 = time.time()
     #files_src = sorted(glob.glob("/mnt/lts/nfs_fs02/sadow_lab/preserve/stopa/sar_hs/data/2021/*.nc"))
-    files_src = sorted(glob.glob('/home1/scratch/agrouaze/training_quach_redo_model/*_processed.nc'))
-    print(f'Found {len(files_src)} files.')
-
+    #files_src = sorted(glob.glob('/home1/scratch/agrouaze/training_quach_redo_model/*_processed.nc'))
+    #files_src = sorted(glob.glob(os.path.join(args.inputdir,'*20180*.nc')))
+    files_src = sorted(glob.glob(os.path.join(args.inputdir, '*.nc')))
+    if args.dev:
+        files_src = files_src[0:10]
+    logging.info(f'Found {len(files_src)} files.')
+    if not os.path.exists(args.outputdir):
+        os.makedirs(args.outputdir)
     # file_dest =  "/mnt/lts/nfs_fs02/sadow_lab/preserve/stopa/sar_hs/data/alt/aggregated_ALT.h5"
     # file_dest =  "/mnt/tmp/psadow/sar/aggregated_ALT.h5"
     # file_dest = "/mnt/tmp/psadow/sar/aggregated_2019.h5"
     # file_dest =  "/mnt/lts/nfs_fs02/sadow_lab/preserve/stopa/sar_hs/data/alt/aggregated_2019.h5"
-    file_dest = os.path.join(args.outputdir,"aggregated.h5")
+    #file_dest = os.path.join(args.outputdir,"aggregated.h5")
+    #file_dest = os.path.join(args.outputdir, "aggregated_v7_normed.nc")
+    file_dest = os.path.join(args.outputdir, "aggregated_v9_normed.nc")
 
     # keys = ['timeSAR', 'timeALT', 'lonSAR', 'lonALT', 'latSAR', 'latALT', 'hsALT', 'dx', 'dt', 'nk', 'hsSM', 'incidenceAngle', 'sigma0', 'normalizedVariance', 'S']
     # keys = ['timeSAR', 'lonSAR',  'latSAR', 'incidenceAngle', 'sigma0', 'normalizedVariance', 'S']
     # keys += ['cspcRe', 'cspcIm']
     # keys = ['timeSAR', 'lonSAR',  'latSAR', 'incidenceAngle', 'sigma0', 'normalizedVariance', 'py_S', 'cspcRe', 'cspcIm'] #'py_cspcRe', 'py_cspcIm']
-    keys = ['timeSAR','timeALT','lonSAR','lonALT','latSAR','latALT','hsALT','dx','dt','nk','hsSM','incidenceAngle','sigma0',
-            'normalizedVariance','cspcRe','cspcIm','py_S']
-    aggregate(files_src,file_dest,keys=keys)
-    logging.info('done')
+    keys = ['timeSAR','timeALT','lonSAR','lonALT','latSAR','latALT','hsALT','wsALT','nk','incidenceAngle','sigma0',
+            'normalizedVariance','latlonSARcossin','doySAR','todSAR','incidence','k','phi','spectrum','cspcRe_slc','cspcIm_slc'] # original spectrum are not in normalized daily fiels for exp1v4/v6
+    #aggregate(files_src,file_dest,keys=keys)
+    xarray_aggregate(files_src, file_dest, keys)
+    logging.info('done in %1.2f seconds',(time.time()-t0))

@@ -1,6 +1,6 @@
 # Train neural network to predict significant wave height from SAR spectra.
 # Train with heteroskedastic regression uncertainty estimates.
-# Author: A Grouazel, June 2021
+# Author: A Grouazel, Oct 2021
 import os, sys
 sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn/')
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true' # Needed to avoid cudnn bug.
@@ -18,7 +18,7 @@ from tensorflow.keras.callbacks import ReduceLROnPlateau,EarlyStopping,ModelChec
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import MaxPooling2D,Conv2D,GlobalMaxPooling2D,Dense,Dropout,Input,concatenate,Flatten,LSTM,Conv1D,MaxPooling1D
 from sarhspredictor.config import model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1
-from sarhspredictor.lib.sarhs.generator import SARGenerator
+from sarhspredictor.lib.sarhs.generator_D1v4 import SARGenerator
 from sarhspredictor.lib.sarhs.heteroskedastic import Gaussian_NLL, Gaussian_MSE
 MSE_metric = tf.keras.metrics.MeanSquaredError(name="mean_squared_error", dtype=None)
 MAE_metric = tf.keras.metrics.MeanAbsoluteError(name="mean_absolute_error", dtype=None)
@@ -44,7 +44,8 @@ def define_model (drop_out=0.5) :
     cnn = Model(inputs,x)
 
     # High-level features.
-    inp = Input(shape=(32,))  # 'hsSM', 'hsWW3v2', 'hsALT', 'altID', 'target' -> dropped
+    #inp = Input(shape=(32,))  # 'hsSM', 'hsWW3v2', 'hsALT', 'altID', 'target' -> dropped
+    inp = Input(shape=(6,)) #expected 7 inputs high level feature see generator_D1v4.py
     x = Dense(units=256,activation='relu')(inp)
     x = Dense(units=256,activation='relu')(x)
     x = Dense(units=256,activation='relu')(x)
@@ -76,15 +77,15 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
 
     # Train
     if tblogdir is None:
-        tblogdir = os.path.join('/home1/scratch/agrouaze/tmp/',
-                            'exp_1_hs_wv_slc')
+        #tblogdir = os.path.join('/home1/scratch/agrouaze/tmp/','exp_1v4_hs_wv_slc')
+        tblogdir = os.path.join('/raid/localscratch/agrouaze/tensorboard','exp_1v4_hs_wv_slc','run_2')
     if os.path.exists(tblogdir) is False :
         logging.info('logdir_tensorboard : %s doesnt exist',tblogdir)
         os.makedirs(tblogdir,0o0775)
     tensorBoard = TensorBoard(
         log_dir=tblogdir,
         histogram_freq=1,
-        batch_size=batch_size,
+        #batch_size=batch_size,
         write_graph=True,
         write_grads=False,
         write_images=False,
@@ -101,13 +102,14 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
         file_model_check_point = checkPointModelSave
     print(file_model_check_point)
     model = define_model(drop_out=drop_out)
-    model.compile(loss=Gaussian_NLL,optimizer=Adam(lr=learning_rate),metrics=[Gaussian_MSE,MAE_metric, MAPE_metric,
+    model.compile(loss=Gaussian_NLL,optimizer=Adam(learning_rate=learning_rate),metrics=[Gaussian_MSE,MAE_metric, MAPE_metric,
                                                                               COSI_SIMI,MSE_metric])
     # input dataset for the training
     file_dest2 = '/home1/scratch/agrouaze/training_quach_redo_model/aggregated_grouped_final_exp1.h5'
     # file provided to Zhengyang 20 of sept 2021:
     file_dest2 = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/aggregated_grouped_final_exp1_per_year_v21sept2021.h5'
     file_dest2 = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/D1_v2_v5oct2021.h5'
+    file_dest2 = '/raid/localscratch/agrouaze/D1_v4_v15oct2021.h5' #dataai0
     # Dataset
 
     epochs = 123
@@ -117,8 +119,9 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
     print(file_dest2)
     train = SARGenerator(filename=filename,
                          subgroups=['2015_2016', '2017'] ,
-                         batch_size=batch_size,exp=1,levelinputs='slc')
-    valid = SARGenerator(filename=filename,subgroups=['2018'],batch_size=batch_size,exp=1,levelinputs='slc')
+                         batch_size=batch_size)
+    logging.info('training ds : %s %s %s',train,dir(train),train.groups)
+    valid = SARGenerator(filename=filename,subgroups=['2018'],batch_size=batch_size)
     # filename = '/mnt/tmp/psadow/sar/sar_hs.h5'
     # epochs = 25
     # train = SARGenerator(filename=filename,
@@ -145,6 +148,9 @@ def start_training(learning_rate=0.0001,batch_size = 128,drop_out=0.5,tblogdir=N
     # if save_model:
     #     outputmodel = '/home1/datawork/agrouaze/model_Hs_NN_WV_ALTIcwaveV4_regression_exp1_%s.h5' % version_model_utput
     #     model.save(outputmodel)
+    outputfile_histo = os.path.join(os.path.dirname(file_dest2),'history_keras')
+    history.save(outputfile_histo)
+    logging.info('history of training saved here: %s',outputfile_histo)
     logging.info('output NN model saved: %s',file_model_check_point)
     best_mse = np.min(history.history['mean_squared_error'])
     best_loss = np.min(history.history['val_loss'])
@@ -174,5 +180,6 @@ if __name__ =='__main__':
                             datefmt='%d/%m/%Y %H:%M:%S')
     t0 = time.time()
     output_model = '/home1/scratch/agrouaze/test_exp1_complete_dataset_provided_to_zhengyang/keras_model_exp1_D1_v2.h5'
+    output_model = '/raid/localscratch/agrouaze/keras_model_exp1_D1_v4.h5'
     start_training(checkPointModelSave=output_model)
     logging.info('elapsed time %1.1f sec',time.time()-t0)

@@ -94,8 +94,8 @@ def format_input_CWAVE_vector_from_SLC ( cspcRe,cspcIm,incidenceangle,s0,nv,kx_o
                                          satellite ) :
     """
     :args:
-        cspcRe (2D array): polSpecRe 512x512 (kx,ky) (size could be different)
-        cspcIm (2D array): polSpecIm 512x512 (kx,ky)
+        cspcRe (2D array): cartesian SpecRe 512x512 (kx,ky) (size could be different)
+        cspcIm (2D array): cartesian SpecIm 512x512 (kx,ky)
         phisar (1D array): oswPhi
         s0 (float): <NRCS> in db
         nv (float): <NormalizeVariance of image digital number>

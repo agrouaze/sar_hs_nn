@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -l walltime=16:50:05
-#PBS -l mem=8gb
-#PBS -N exp1NN
+#PBS -l mem=15gb
+#PBS -N exp2NN
 #PBS -m n
 echo "Hello ${1}"
 # 21Go takes into account for 2 coloc with the same sar measurement
@@ -12,11 +12,9 @@ myvariable=$(whoami)
 
 #if [[ "${myvariable}" == "agrouaze" ]]; then
 #echo 'je suis agrouaze'
-pybin=/home1/datawork/satwave/miniconda3_v2/envs/cwave_v3_quach2020_exploit/bin/python #dedicated env for Quach 2020 exploit
-pybin=/home1/datawork/agrouaze/conda_envs2/envs/xsarQuach2020/bin/python
+
 pybin=/home/datawork-cersat-public/project/mpc-sentinel1/workspace/conda/envs/xsar_pr46/bin/python #changed in may 2022
-pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/rebuild_training_dataset_exp1.py
-pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/rebuild_training_dataset_exp1v4.py
+pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/bin/rebuild_training_dataset_exp2.py
 export PYTHONPATH=/home1/datahome/agrouaze/git/calval_cfo_scat/cfoscatcalval
 export PYTHONPATH=/home1/datahome/agrouaze/git/calval_cfo_scat/:$PYTHONPATH
 #export PYTHONPATH=/home1/datahome/agrouaze/git/xsarseafork/src/xsarsea:$PYTHONPATH
@@ -30,6 +28,7 @@ export PYTHONPATH=/home1/datahome/agrouaze/git/mpc/data_collect/:$PYTHONPATH
 #  export PYTHONPATH=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/:$PYTHONPATH
 #  pyexe=/home1/datahome/satwave/sources_en_exploitation2/calval_cfo_scat/cfoscatcalval/src/MLE_aggregation_per_day_L2B.py
 #fi
-$pybin $pyexe --slc ${1} --ocn ${2}
+#outdd=/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v1/
+$pybin $pyexe --redo --date ${1} --sar-unit ${2} --alti ${3} --outputdir ${4}
 echo end of python script exe
 exit 0

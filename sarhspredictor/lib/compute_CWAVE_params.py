@@ -185,7 +185,7 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     else:
         flagKcorrupted = False
     logging.debug('flagKcorrupted = %s',flagKcorrupted)
-    if (ks1>1000).any()and False:#improv agrouaze turned off while the validaiton is not over
+    if (ks1>1000).any() and False:#improv agrouaze turned off while the validaiton is not over
         logging.info('beware oswK contains fillvalues')
         indices_pourris = (ks1>1000)
         ks1[indices_pourris] = reference_oswK_2017[indices_pourris]

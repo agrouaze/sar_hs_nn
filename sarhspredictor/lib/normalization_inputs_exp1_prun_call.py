@@ -1,5 +1,7 @@
+#!/home1/datawork/agrouaze/conda_envs2/envs/py2.7_cwave/bin/python
 # coding: utf-8
 """
+temps estimated of run from 2014 to 2018: about 713k files WV: about 30min
 """
 import os
 import sys
@@ -26,12 +28,15 @@ if __name__ == '__main__':
     prunexe = '/appli/prun/bin/prun'
     #listing = '/home1/scratch/agrouaze/agg_multi_year_sat_prun.txt'
     listing = '/home1/scratch/agrouaze/hs_regression_listing_exp1_normalization_step_daily_prun.txt' # written below
+    listing = '/home1/scratch/agrouaze/hs_regression_listing_exp2_normalization_step_daily_prun.txt'  # written below
     # call prun
     opts = ' --split-max-lines=1 --name exp1HsNormDailyProd --background -e ' # pour 2018 178086 tiff SLC colocalised
     listing_content = []
-    sta = datetime.datetime(2014,4,1)
+    #sta = datetime.datetime(2014,4,1)
     #sto = datetime.datetime.today()
-    sto  = datetime.datetime(2018,12,31)
+    #sto  = datetime.datetime(2018,12,31)
+    sta = datetime.datetime(2019,7,1)
+    sto = datetime.datetime(2022,7,4)
     for ddd in rrule.rrule(rrule.DAILY,dtstart=sta,until=sto):
             #listing_content.append('--startdate %s0101 --stopdate %s1231 --suffix=%s'%(year,year,year))
             listing_content.append('%s %s' % (ddd.strftime('%Y%m%d'),ddd.strftime('%Y%m%d')))

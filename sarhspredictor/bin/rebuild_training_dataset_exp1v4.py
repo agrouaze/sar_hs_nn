@@ -1,53 +1,54 @@
 """
 exp 1: doing the Quach experiment with X spectra from SLC instead of OCN
- steps 1) read a tiff 2) find the indice of this tiff in the cwaveV4 to retrieve Hs alti 3) compute 22 CWAVE params from SLC cross spectra 4) add SLC cross spectra
+ steps
+ 1) read a tiff
+ 2) find the indice of this tiff in the cwaveV4 to retrieve Hs alti
+ 4) add SLC cross spectra
  (note that I could keep the CWAVE params from L2 xspectra... not tested yet)
-May 2021
+Oct 2021
 A Grouazel
 the listing of tiff to treat is here: /home1/datawork/agrouaze/data/sentinel1/cwave/listing_SAR_L2_L1_measu_from_colocations_cwaveV4.txt
-inspiration rebuild_training_dataset.py
-tested with cwave
-INPUTS: SLC WV, CWAVEv4 alti Hs,
+-no CWAVE
+-no wv_angle
+-replaced hour of day by day of year
+-no more OCN inputs
+-incidence angle normalized for IW range
+INPUTS: SLC WV, CWAVEv4 alti Hs (justin),
+env : xsar_gdal3.3_v2 -> puis xsar_pr46 en dev/test Juin 2022
+NOTE: ce script ne sera peut etre jamais utilise car je peux repartir du dataset D1_v3, il n'y a que la normalization
+et les output varibles qui changent
 """
+import pdb
+
 import os
 import sys
+sys.path.append('/home1/datahome/agrouaze/git/mpc/data_collect')
 sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/xsarsea')
+sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/')
 sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn')
+sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib')
 import logging
 import xarray
 import numpy as np
 import datetime
+import xsar
 import glob
-import xsarsea
-import xsarsea.cross_spectra_core
 import warnings
-import copy
 import time
 from collections import defaultdict
-from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 import resource
 warnings.simplefilter(action='ignore',category=FutureWarning)
 from scipy.spatial import KDTree
-import traceback
-import pdb
 
-from predict_hs_from_SLC import compute_Cwave_params_and_xspectra_fromSLC
-reference_oswK_1145m_60pts = np.array([0.005235988, 0.00557381, 0.005933429, 0.00631625, 0.00672377,
-    0.007157583, 0.007619386, 0.008110984, 0.008634299, 0.009191379,
-    0.0097844, 0.01041568, 0.0110877, 0.01180307, 0.01256459, 0.01337525,
-    0.01423822, 0.01515686, 0.01613477, 0.01717577, 0.01828394, 0.01946361,
-    0.02071939, 0.02205619, 0.02347924, 0.02499411, 0.02660671, 0.02832336,
-    0.03015076, 0.03209607, 0.03416689, 0.03637131, 0.03871796, 0.04121602,
-    0.04387525, 0.04670605, 0.0497195, 0.05292737, 0.05634221, 0.05997737,
-    0.06384707, 0.06796645, 0.0723516, 0.07701967, 0.08198893, 0.08727881,
-    0.09290998, 0.09890447, 0.1052857, 0.1120787, 0.1193099, 0.1270077,
-    0.1352022, 0.1439253, 0.1532113, 0.1630964, 0.1736193, 0.1848211,
-    0.1967456, 0.2094395])
+from predict_hs_from_SLC import get_xspectrum_SLC,reference_oswK_1145m_60pts,compute_Cwave_params_and_xspectra_fromSLC
+from compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
+from slc_image_normalization import gaussian_lowpass
+
 DIR_ORIGINAL_COLOCS = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/quach2020/validation/colocations/original_colocations_YoungAltiDatabase_vs_WV_L2_Jstopa/cwaveV4/'
-OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v1/'
-OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v2/' # rep with both SLC and OCN inputs for training
-OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v3/' # Aug 21: add multi coloc sar alti with suffix _01.nc _02.nc
-OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1/training_dataset/v4/' # January 2022 -> fix pixel spacing computed with a sinus
+OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v1/' # D1v4 10oct21
+OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v6/' # 8 may 2022 completed 17 may 22
+OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v7/' # 20 may 2022 rotation fixed en -90° pour asc&desc, no more NaN in spectrum, no more abs(Imag)
+OUTPUTDIR = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v8/' # 11 Juin 2022: dataset avec tte les variable des hawaiiens HLF + cwave + spectre
 def round_seconds(obj: datetime.datetime) -> datetime.datetime:
     if obj.microsecond >= 500_000:
         obj += datetime.timedelta(seconds=1)
@@ -145,19 +146,31 @@ def read_coloc_file(slc,ocn):
 
 
 
-def prepare_one_measurement(slc,ocn,dev=False):
+def prepare_one_measurement(slc,ocn,dev=False,add_cwave_L2=False,add_cwave_L1=False):
     """
 
     :param slc: str
-    :param ocn : str
+    :param ocn : str I still need the ocn path since it is the key for Justins' coloc
     :param coloc_file_JS: str full path of the colocation file from Justin Stopa
     :return:
     """
     logging.debug('slc :%s',slc)
     logging.debug('ocn: %s',ocn)
+    # read SLC tiff files with xsar
+    imagette_number = os.path.basename(slc).split('-')[-1].replace('.tiff', '')
+    print(imagette_number)
+    fullpathsafeSLC = os.path.dirname(os.path.dirname(slc))
+    if 'WV' in slc:
+        str_gdal = 'SENTINEL1_DS:%s:WV_%s' % (fullpathsafeSLC, imagette_number)
+    print('str_gdal', str_gdal)
+    xsarobj = xsar.Sentinel1Dataset(str_gdal)
+
 
     new_times,lon_x,lat_x,sat,ds_coloc,datedt_ocn = read_coloc_file(slc,ocn)
     inds,ds_coloc,cptx = find_indices_sar_acquisition_in_monthly_colocs(ds_coloc,datedt_ocn,lon_x,lat_x,new_times)
+    vars_2_drop = ['dx','dt','altID','hsSM','S','fileNameFull','filterNameFull','cspcRe','cspcIm']
+    vars_2_drop = ['S'] #for the dataset needed by Thomas Grange 10 June 2022, I want to put back all the variables, except the CWAVE computed by Justin on matlab spectrum from L2
+    ds_coloc = ds_coloc.drop(vars_2_drop)
 
     nb_match = len(inds)
     all_subsets_coloc = []
@@ -165,7 +178,8 @@ def prepare_one_measurement(slc,ocn,dev=False):
         logging.info('prepare coloc : %s/%s',xxx+1,nb_match)
         # 1) read all params from Justin s dataset
         subsetcoloc = ds_coloc.isel(time=np.array([indxs])) #{ on peut selectionner plusieurs indice en meme temps avec isel}
-
+        subsetcoloc = subsetcoloc.drop('k')
+        #subsetcoloc = subsetcoloc.drop('directions')
         logging.info('subsetcoloc : %s',subsetcoloc)
         # keep a time dimension to be sure to be able to gather with open_mfdataset
         for vv in subsetcoloc.keys():
@@ -190,58 +204,99 @@ def prepare_one_measurement(slc,ocn,dev=False):
                 #     new_coords['time'] = [datedt_slc]
                 # subsetcoloc[vv] = xarray.DataArray(reshped_data,dims=new_dims,
                 #                                    coords=new_coords)
-
-        # 4) compute C wave params
-        ths1 = np.arange(0,360,5)
+        #change units for timeSAR
+        subsetcoloc['timeSAR'].encoding['units'] = 'seconds since 2014-01-01 00:00:00'
+        ths1 = np.arange(0, 360, 5)
+        s0 = subsetcoloc['sigma0'].values[0] # from L2
+        s0_SLC = np.nanmean(xsarobj.dataset['sigma0'].sel(pol='VV').values)
+        subsetcoloc['s0_SLC'] = xarray.DataArray([10.*np.log10(s0_SLC)],dims=['time'],attrs={'description':'sigma0 denoised','unit':'dB'})
+        nv = subsetcoloc['normalizedVariance'].values[0] # from L2
+        intensity = (np.abs(xsarobj.dataset['digital_number'].sel(pol='VV').values) ** 2.).astype('float64')
+        lowpass_width = [750., 750.]
+        im_spacing = np.array([xsarobj.dataset.attrs['pixel_atrack_m'],xsarobj.dataset.attrs['pixel_xtrack_m']])
+        lowpass_sigma = np.array(lowpass_width) / im_spacing
+        lowpass = gaussian_lowpass(intensity, lowpass_sigma)
+        intensity /= lowpass
+        nv_SLC =np.var(intensity) / np.mean(intensity) ** 2.
+        subsetcoloc['nv_SLC'] = xarray.DataArray([nv_SLC], dims=['time'],attrs={'description':'normalize variance computed from SLC Digital Numbers'})
+        ta_SLC = xsarobj.dataset.platform_heading
+        subsetcoloc['ta_SLC'] = xarray.DataArray([ta_SLC], dims=['time'],attrs={'description':'track angle from SLC annotation platform heading'})
         ta = subsetcoloc['trackAngle'].values[0]
-        s0 = subsetcoloc['sigma0'].values[0]
-        nv = subsetcoloc['normalizedVariance'].values[0]
-        incidenceangle = subsetcoloc['incidenceAngle'].values[0]
+        incidenceangle = subsetcoloc['incidenceAngle'].values[0] #from L2
+        incidenceangle_SLC = xsarobj.s1meta.image['incidence_angle_mid_swath']
+        subsetcoloc['incidenceangle_SLC'] = xarray.DataArray([incidenceangle_SLC], dims=['time'], attrs={
+            'description': 'incidence angle at mid swath from SLC annotation '})
         lonsar = subsetcoloc['lonSAR'].values[0]
         latsar = subsetcoloc['latSAR'].values[0]
-        subsetcoloc['cspcRe']  = subsetcoloc['cspcRe'].astype('float64')
-        subsetcoloc['cspcIm']  = subsetcoloc['cspcIm'].astype('float64') # not sure this is necessary
-        #subsetcoloc['S'] = subsetcoloc['S'].astype('float64') # problem with cwaveV4 variable not readable, I have to compute it again
-        satellite = os.path.basename(ocn)[0:3]
-        ks1 = reference_oswK_1145m_60pts
-        logging.info("subsetcoloc['cspcIm'].values.squeeze().T :%s",subsetcoloc['cspcIm'].values.squeeze().T.shape)
-        subset_ok,flagKcorrupted,cspcReX,cspcImX,_,ks1,ths1,kx,ky,\
-        cspcReX_not_conservativ,Socn = format_input_CWAVE_vector_from_OCN(cspcRe=subsetcoloc['cspcRe'].values.squeeze().T,
-                                                                            cspcIm=subsetcoloc['cspcIm'].values.squeeze().T,
-                                                                            ths1=ths1,ta=ta,
-                                                                            incidenceangle=incidenceangle,
-                                                                            s0=s0,nv=nv,ks1=ks1,datedt=datedt_ocn,
-                                                                            lonSAR=lonsar,latSAR=latsar,satellite=satellite)
+        lonsar_SLC,latsar_SLC = xsarobj.dataset.footprint.centroid.xy
+        subsetcoloc['lonsar_SLC'] = xarray.DataArray([lonsar_SLC[0]], dims=['time'], attrs={
+            'description': 'longitude of the SLC footprint centroid'})
+        subsetcoloc['latsar_SLC'] = xarray.DataArray([latsar_SLC[0]], dims=['time'], attrs={
+            'description': 'latitude of the SLC footprint centroid'})
+        if add_cwave_L2:
+            #4) compute C wave params
+            #subsetcoloc['cspcRe']  = subsetcoloc['cspcRe'].astype('float64').rename({'directions':'phi','wavenumbers':'k'})
+            subsetcoloc['cspcRe'] = xarray.DataArray(subsetcoloc['cspcRe'].astype('float64').values,
+                                                     coords={'k':reference_oswK_1145m_60pts,'phi':ths1,'time':subsetcoloc['time']},
+                                                     dims=['time','phi','k'],attrs={'description':'oswQualityCrossSpectraRe from Justin dataset CWAVEv4',
+                                                                                    "long_name" : "SAR: cspcRe real component of the cross spectrum estimated from the SAR image (log-polar grid)"})
+            #subsetcoloc['cspcIm']  = subsetcoloc['cspcIm'].astype('float64').rename({'directions':'phi','wavenumbers':'k'}) # not sure this is necessary
+            subsetcoloc['cspcIm'] = xarray.DataArray(subsetcoloc['cspcIm'].astype('float64').values,
+                                                     coords={'k':reference_oswK_1145m_60pts,'phi':ths1,'time':subsetcoloc['time']},
+                                                     dims=['time','phi','k'],attrs={'description':'oswQualityCrossSpectraIm from Justin dataset CWAVEv4',
+                                                                                    "long_name" : "SAR: cspcIm imaginary component of the cross spectrum estimated from the SAR image (log-polar grid)"})
+            #subsetcoloc['S'] = subsetcoloc['S'].astype('float64') # problem with cwaveV4 variable not readable, I have to compute it again
+            satellite = os.path.basename(ocn)[0:3]
+            ks1 = reference_oswK_1145m_60pts
+            logging.info("subsetcoloc['cspcIm'].values.squeeze().T :%s",subsetcoloc['cspcIm'].values.squeeze().T.shape)
+            subset_ok,flagKcorrupted,cspcReX,cspcImX,_,ks1,ths1,kx,ky,\
+            cspcReX_not_conservativ,Socn = format_input_CWAVE_vector_from_OCN(cspcRe=subsetcoloc['cspcRe'].values.squeeze().T,
+                                                                                cspcIm=subsetcoloc['cspcIm'].values.squeeze().T,
+                                                                                ths1=ths1,ta=ta,
+                                                                                incidenceangle=incidenceangle,
+                                                                                s0=s0,nv=nv,ks1=ks1,datedt=datedt_ocn,
+                                                                                lonSAR=lonsar,latSAR=latsar,satellite=satellite)
+            subsetcoloc['S'] = xarray.DataArray(np.tile(Socn.T, (1, 1)), dims=['time', 'N'],
+                                                coords={'time': subsetcoloc['time'], 'N': np.arange(20)})
+            subsetcoloc['S'].attrs['description'] = 'S params from OCN polar xpectra'
 
 
 
         #same operation bu using level1 informations
-        crossSpectraImPol_xa,crossSpectraRePol_xa,times_bidons,S_slc = compute_Cwave_params_and_xspectra_fromSLC(slc,dev,
-                        nb_match=1,ths1=ths1,ta=ta,s0=s0,nv=nv,incidenceangle=incidenceangle,lonsar=lonsar,latsar=latsar)
-        subsetcoloc = subsetcoloc.drop('k') #to avoid issues of ambigiuity on k (whether coords or variable)
-        subsetcoloc['crossSpectraImPol'] = crossSpectraImPol_xa
-        subsetcoloc['crossSpectraImPol'].attrs['description'] = 'variable from SLC WV products'
-        subsetcoloc['crossSpectraRePol'] = crossSpectraRePol_xa
-        subsetcoloc['crossSpectraRePol'].attrs['description'] = 'variable from SLC WV products'
+        #crossSpectraImPol_xa,crossSpectraRePol_xa,crossSpectraImPolval,crossSpectraRePolval,datedt_slc,times_bidons = \
+        #    get_xspectrum_SLC(slc,nb_match=nb_match,dev=dev)
+        if add_cwave_L1:
+            crossSpectraImPol_xa,crossSpectraRePol_xa,times_bidons,S_slc = compute_Cwave_params_and_xspectra_fromSLC(slc,dev,
+                             nb_match=1,ths1=ths1,ta=ta,s0=s0,nv=nv,incidenceangle=incidenceangle,lonsar=lonsar,latsar=latsar)
+            #subsetcoloc = subsetcoloc.drop('k') #to avoid issues of ambigiuity on k (whether coords or variable)
+            subsetcoloc['crossSpectraImPol'] = crossSpectraImPol_xa
+            subsetcoloc['crossSpectraImPol'].data = crossSpectraImPol_xa
+            subsetcoloc['crossSpectraImPol'].attrs['description'] = 'variable from SLC WV products'
 
-        logging.info('crossSpectraRePol %s',crossSpectraRePol_xa.shape)
-        logging.info('ta : %s',ta)
-        logging.info('incidenceangle : %s',incidenceangle)
+            subsetcoloc['crossSpectraRePol'] = crossSpectraRePol_xa
+            subsetcoloc['crossSpectraRePol'].data = crossSpectraRePol_xa
+            subsetcoloc['crossSpectraRePol'].attrs['description'] = 'variable from SLC WV products'
+            subsetcoloc['py_S'] = xarray.DataArray(np.tile(S_slc.T, (1, 1)), dims=['time', 'N'],
+                                                   coords={'time': times_bidons, 'N': np.arange(20)})
+            subsetcoloc['py_S'].data = np.tile(S_slc.T, (1, 1)) # bug bizarre je suis oblige de faire ca pour ne pas avoir de NaN
+            subsetcoloc['py_S'].attrs['description'] = 'S params from SLC polar xspectra'
+
+            logging.info('crossSpectraRePol %s',crossSpectraRePol_xa.shape)
+        #logging.info('ta : %s',ta)
+        #logging.info('incidenceangle : %s',incidenceangle)
         lstvars_with_scale_factor_and_offset = ['hsALTmin','hsALTmax','incidenceAngle','hsALT','hsWW3','wsALTmin',
                                                 'wsALT','wsALTmax','dx','dt','nk','nth','hsSM','h200','h400','h800',
                                                 'trackAngle','hsWW3v2']
         for vvy in lstvars_with_scale_factor_and_offset :
             if vvy in subsetcoloc:
                 subsetcoloc[vvy].encoding = {}
-        subsetcoloc = subsetcoloc.drop('k')  # to avoid ambiguous k coordinates definition
+        #subsetcoloc = subsetcoloc.drop('k')  # to avoid ambiguous k coordinates definition
         for hh in subsetcoloc :
             if 'prb' in hh :
                 subsetcoloc = subsetcoloc.drop(hh)
 
-        subsetcoloc['py_S'] = xarray.DataArray(np.tile(S_slc.T,(1,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
-        subsetcoloc['py_S'].attrs['description'] = 'S params from SLC xspectra'
-        subsetcoloc['S'] = xarray.DataArray(np.tile(Socn.T,(1,1)),dims=['time','N'],coords={'time' : times_bidons,'N' : np.arange(20)})
-        subsetcoloc['S'].attrs['description'] = 'S params from OCN xpectra'
+
+
         #subsetcoloc['py_S'] = xarray.DataArray(S.T,dims=['time','N'],coords={'time':[datedt_slc],'N':np.arange(20)}) #solution simple
         #subsetcoloc['py_S'] = subsetcoloc['py_S'].attrs['description']='20 C-WAVE params computed from polar cross spectra 2-tau'
         all_subsets_coloc.append(subsetcoloc)
@@ -255,10 +310,22 @@ def save_training_file(dscoloc_enriched,outputfile):
     :return:
     """
     # 5 ) save a netcdf file
+    glob_attrs = {'processing_method': save_training_file.__name__,
+                  'processing_script': os.path.basename(__file__),
+                  'processing_env': sys.executable,
+                  'processing_date': datetime.datetime.today().strftime('%Y%m%d %H:%M'),
+                  'input_dir': 'IFREMER S1 WV SLC data + '+DIR_ORIGINAL_COLOCS,
+                  'outputdir_dir': os.path.dirname(outputfile)
+                  }
+    dscoloc_enriched.attrs = glob_attrs
     dscoloc_enriched.attrs['created_on'] = '%s' % datetime.datetime.today()
     dscoloc_enriched.attrs['created_by'] = 'Antoine Grouazel'
-    dscoloc_enriched.attrs['purpose'] = 'SAR Hs NN learning/inferences exp#1'
+    dscoloc_enriched.attrs['purpose'] = 'SAR Hs NN learning/inferences exp#1v4'
     dscoloc_enriched.attrs['purpose'] = 'content SAR & Alti colocations prepared by J.Stopa'
+    logging.info('dscoloc_enriched : %s',dscoloc_enriched)
+    for uu in dscoloc_enriched:
+        logging.info('dtype %s %s',uu,dscoloc_enriched[uu].dtype)
+    #dscoloc_enriched.to_netcdf(outputfile,encoding={'time':{'unit':'seconds since 2014-01-01 00:00:00'}})
     dscoloc_enriched.to_netcdf(outputfile)
     logging.info('outputfile : %s',outputfile)
     os.chmod(outputfile,0o0777)
@@ -293,18 +360,12 @@ if __name__ == '__main__' :
     # direct matching multi indices
     #slc = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L1/WV/S1A_WV_SLC__1S/2018/001/S1A_WV_SLC__1SSV_20180101T132025_20180101T134211_019961_021FEA_C3D7.SAFE/measurement/s1a-wv2-slc-vv-20180101t132040-20180101t132043-019961-021fea-002.tiff'
     #ocn = '/home/datawork-cersat-public/project/mpc-sentinel1/data/esa/sentinel-1a/L2/WV/S1A_WV_OCN__2S/2018/001/S1A_WV_OCN__2SSV_20180101T132025_20180101T134211_019961_021FEA_7EBF.SAFE/measurement/s1a-wv2-ocn-vv-20180101t132040-20180101t132043-019961-021fea-002.nc'
-    if args.outputdir:
-        outdir = args.outputdir
-    else:
-        outdir = OUTPUTDIR
     datedt_slc = datetime.datetime.strptime(os.path.basename(args.slc).split('-')[4],'%Y%m%dt%H%M%S')
-    outputfile_pattern = os.path.join(outdir,datedt_slc.strftime('%Y'),
+    outputfile_pattern = os.path.join(args.outputdir,datedt_slc.strftime('%Y'),
                               datedt_slc.strftime('%j'),'training_%s_*.nc' %os.path.basename(args.slc).replace('.tiff',''))
     logging.info('outputfile_pattern : %s',outputfile_pattern)
-    rdt = np.random.randint(0, 5, 1)[0]
-    time.sleep(rdt)# to avoid errors on the makedir
     if os.path.exists(os.path.dirname(outputfile_pattern)) is False :
-
+        time.sleep(np.random.rand())
         os.makedirs(os.path.dirname(outputfile_pattern),0o0775)
     lst_output = glob.glob(outputfile_pattern)
     # remove is needed
@@ -317,7 +378,7 @@ if __name__ == '__main__' :
         logging.info('nothing to do, the file already exists')
         sys.exit(0)
     else:
-        all_dscoloc_enriched = prepare_one_measurement(args.slc,args.ocn,dev=args.dev)
+        all_dscoloc_enriched = prepare_one_measurement(args.slc,args.ocn,dev=args.dev,add_cwave_L1=True,add_cwave_L2=True)
         for yyy,dscoloc_enriched in enumerate(all_dscoloc_enriched):
             outputfile = outputfile_pattern.replace('*',str(yyy+1).zfill(2))
             save_training_file(dscoloc_enriched,outputfile)

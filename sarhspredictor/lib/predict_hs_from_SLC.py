@@ -38,6 +38,88 @@ def from_np64_to_dt(dt64):
     ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
     return datetime.datetime.utcfromtimestamp(ts)
 
+
+def get_xspectrum_SLC(slc,nb_match,dev=False):
+    """
+
+    :param slc:
+    :param nb_match:
+    :param dev:
+    :return:
+    """
+    datedt_slc = datetime.datetime.strptime(os.path.basename(slc).split('-')[4],
+                                            '%Y%m%dt%H%M%S')  # cette date change bien mem pour les data en 2015Z
+    dsslc = xsarsea.cross_spectra_core.read_slc(slc)
+    if dev:
+        nperseg = {'range' : 2048,'azimuth' : 2048}
+    else:
+        nperseg = {'range' : 512,'azimuth' : 512}
+    t0 = time.time()
+    allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image, \
+    limits_sub_images = xsarsea.cross_spectra_core.compute_SAR_cross_spectrum(
+        dsslc,
+        N_look=3,look_width=0.25,
+        look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
+        welsh_window='hanning',
+        nperseg=nperseg,
+        noverlap={'range' : 256,'azimuth' : 256}
+        ,spacing_tol=1e-3,debug_plot=False,return_periodoXspec=False)
+    logging.info('time to get %s X-spectra : %1.1f seconds',len(splitting_image),time.time() - t0)
+    # 3) interpolate and convert cartesian grid to polar 72,60
+    xspecRe = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').real)
+    if False:
+        crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
+                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
+            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
+    else:# version corrected January 2022
+        crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
+                                                                                    ksampling='log',
+                                                                                    **{'k' : reference_oswK_1145m_60pts})
+    crossSpectraRePol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
+        crossSpectraRePol)
+    #crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,90.)  # This is for having origin at North
+    crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol, -90.)  # This is for having origin at North, correction January 2022
+    crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,dsslc.attrs['platform_heading'])
+    crossSpectraRePolval = copy.copy(crossSpectraRePol.values.squeeze())
+
+    xspecIm = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').imag)
+    if False:
+        crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm,Nphi=72,
+                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
+            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
+    else:  # version corrected January 2022
+        crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm, Nphi=72,
+                                                                                       ksampling='log',
+                                                                                       **{
+                                                                                           'k': reference_oswK_1145m_60pts})
+    crossSpectraImPol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
+        crossSpectraImPol)
+    crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,-90.)  # This is for having origin at North, -90 instead of 90 January 22
+    crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,dsslc.attrs['platform_heading'])
+    crossSpectraImPolval = copy.copy(crossSpectraImPol.values.squeeze())
+
+    # duplicate the X spectra and CWAVE params for the N number of colcoations with this particular SAR acquisition
+    multi_xpsec_im = np.tile(crossSpectraImPol.values,(nb_match,1,1))
+    multi_xpsec_re = np.tile(crossSpectraRePol.values,(nb_match,1,1))
+    logging.info('multi_xpsec_im %s',multi_xpsec_im.shape)
+    times_bidons = [
+        datedt_slc]  # dirty trick, j invente des dates pour pouvoir ensuite aggregger les colocs ensemble a coup de mfdataset
+    for ttt in range(1,nb_match) :
+        times_bidons.append(datedt_slc + datetime.timedelta(seconds=ttt))
+    logging.info('times_bidons : %s',times_bidons)
+    crossSpectraImPol_xa = xarray.DataArray(multi_xpsec_im,dims=['time','k','phi'],
+                                            coords={'time' : times_bidons,
+                                                    'k' : crossSpectraImPol.k.values,
+                                                    'phi' : crossSpectraImPol.phi.values
+                                                    })
+    crossSpectraRePol_xa = xarray.DataArray(multi_xpsec_re,dims=['time','k','phi'],
+                                            coords={'time' : times_bidons,
+                                                    'k' : crossSpectraRePol.k.values,
+                                                    'phi' : crossSpectraRePol.phi.values
+                                                    })
+    return crossSpectraImPol_xa,crossSpectraRePol_xa,crossSpectraImPolval,crossSpectraRePolval,datedt_slc,times_bidons
+
+
 def compute_Cwave_params_and_xspectra_fromSLC(slc,dev,ths1,ta,s0,nv,lonsar,latsar,incidenceangle,nb_match=1):
     """
 
@@ -54,66 +136,12 @@ def compute_Cwave_params_and_xspectra_fromSLC(slc,dev,ths1,ta,s0,nv,lonsar,latsa
     :return:
     """
     # 2) read X spectra from tiff
-    datedt_slc = datetime.datetime.strptime(os.path.basename(slc).split('-')[4],
-                                            '%Y%m%dt%H%M%S')  # cette date change bien mem pour les data en 2015Z
+
 
     sat = os.path.basename(slc)[0:3]
-    dsslc = xsarsea.cross_spectra_core.read_slc(slc)
-    if dev:
-        nperseg = {'range' : 2048,'azimuth' : 2048}
-    else:
-        nperseg = {'range' : 512,'azimuth' : 512}
-    t0 = time.time()
-    allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image,\
-    limits_sub_images = xsarsea.cross_spectra_core.compute_SAR_cross_spectrum(
-        dsslc,
-        N_look=3,look_width=0.25,
-        look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
-        welsh_window='hanning',
-        nperseg=nperseg,
-        noverlap={'range' : 256,'azimuth' : 256}
-        ,spacing_tol=1e-3,debug_plot=False,return_periodoXspec=False)
-    logging.info('time to get %s X-spectra : %1.1f seconds',len(splitting_image),time.time() - t0)
-    # 3) interpolate and convert cartesian grid to polar 72,60
-    xspecRe = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').real)
-    crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
-                                                                                ksampling='log',**{'Nk' : 60,'kmin' :
-            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-    crossSpectraRePol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-        crossSpectraRePol)
-    crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,90.)  # This is for having origin at North
-    crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,dsslc.attrs['platform_heading'])
-    crossSpectraRePolval = copy.copy(crossSpectraRePol.values.squeeze())
 
-
-    xspecIm = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').imag)
-    crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm,Nphi=72,
-                                                                                ksampling='log',**{'Nk' : 60,'kmin' :
-            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-    crossSpectraImPol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-        crossSpectraImPol)
-    crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,90.)  # This is for having origin at North
-    crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,dsslc.attrs['platform_heading'])
-    crossSpectraImPolval = copy.copy(crossSpectraImPol.values.squeeze())
-
-    # duplicate the X spectra and CWAVE params for the N number of colcoations with this particular SAR acquisition
-    multi_xpsec_im = np.tile(crossSpectraImPol.values,(nb_match,1,1))
-    multi_xpsec_re = np.tile(crossSpectraRePol.values,(nb_match,1,1))
-    logging.info('multi_xpsec_im %s',multi_xpsec_im.shape)
-    times_bidons = [datedt_slc] #dirty trick, j invente des dates pour pouvoir ensuite aggregger les colocs ensemble a coup de mfdataset
-    for ttt in range(1,nb_match):
-        times_bidons.append(datedt_slc+datetime.timedelta(seconds=ttt))
-    logging.info('times_bidons : %s',times_bidons)
-    crossSpectraImPol_xa = xarray.DataArray(multi_xpsec_im,dims=['time','k','phi'],
-                            coords={'time':times_bidons,
-                                    'k':crossSpectraImPol.k.values,
-                                    'phi':crossSpectraImPol.phi.values
-                                    })
-    crossSpectraRePol_xa = xarray.DataArray(multi_xpsec_re,dims=['time','k','phi'],
-                            coords={'time':times_bidons,
-                                    'k':crossSpectraRePol.k.values,
-                                    'phi':crossSpectraRePol.phi.values
-                                    })
+    crossSpectraImPol_xa,crossSpectraRePol_xa,crossSpectraImPolval,crossSpectraRePolval,datedt_slc,times_bidons = \
+        get_xspectrum_SLC(slc,nb_match=nb_match,dev=dev)
     #subsetcoloc['crossSpectraImPol'] = crossSpectraImPol # version simple si il ny avait pas eu des multi colocs
     #subsetcoloc['crossSpectraRePol'] = crossSpectraRePol
     subset_ok,flagKcorrupted,cspcReX,cspcImX,cspcRev2,ks1,ths1,kx,ky,cspcReX_not_conservativ,S = format_input_CWAVE_vector_from_OCN(
