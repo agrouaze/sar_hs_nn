@@ -115,6 +115,8 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     %   s1a-wv2-ocn-vv-20151130t201457-20151130t201500-008838-00c9f5-046.nc
     % hsSM=1.3282
     """
+    assert cspcIm.shape == (60,72)
+    assert cspcRe.shape == (60,72)
     t0 = time.time()
     logging.debug('start computing hs total SAR with X spectra shape %s',cspcRe.shape)
 #     % Constants for CWAVE======================================================
@@ -183,7 +185,7 @@ def format_input_CWAVE_vector_from_OCN(cspcRe,cspcIm,ths1,ta,incidenceangle,s0,n
     else:
         flagKcorrupted = False
     logging.debug('flagKcorrupted = %s',flagKcorrupted)
-    if (ks1>1000).any()and False:#improv agrouaze turned off while the validaiton is not over
+    if (ks1>1000).any() and False:#improv agrouaze turned off while the validaiton is not over
         logging.info('beware oswK contains fillvalues')
         indices_pourris = (ks1>1000)
         ks1[indices_pourris] = reference_oswK_2017[indices_pourris]

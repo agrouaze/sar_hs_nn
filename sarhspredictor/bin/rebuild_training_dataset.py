@@ -1,6 +1,6 @@
 """
 I spot in February 2021 that original training dataset had several variables with only 2 digits after comma while original S1 data had 4 digits
-I want to redo a training dataset containing the S params and SAR aprams computed from ocn files plus the Hs from altimeters
+I want to redo a training dataset containing the S params and SAR params computed from ocn files plus the Hs from altimeters
 A. Grouazel
 2 Feb 2021
 """
@@ -335,7 +335,7 @@ if __name__ == '__main__' :
     if args.input is None :
         # find the files from ju:stin (coloc with alti)
         input_justin = '/home/cercache/users/jstopa/sar/empHs/cwaveV4'
-
+        input_justin  =''
         listing_justin = glob.glob(os.path.join(input_justin,'*.nc'))
         logging.info('Nb files justin : %s',len(listing_justin))
         cpt = collections.defaultdict(int)

@@ -1,6 +1,27 @@
 # Define utility functions for preprocessing SAR data.
 import numpy as np
+import datetime
+#PERCENTILE_99 = {'re':4715029695.5043869,'im':595082012.33398867} # performed on v3 exp1
+#PERCENTILE_99 = {'re':1.5377643610847046e+17,'im':82147297185.429794} # estimation performed on v4 exp1 Feb 2022, not used since the values seems too high compare to previous v3, risk to degrade the spectrum
+PERCENTILE_99 = {'re':4.124100750609777e+28,'im':6.357411979053802e+22} #estimated le 12 may 2022 with exp1v4/v6, apres generation des fichiers normalises je vois que la normalization est un peu forte.. mais il reste du signal.. a voir si on parviens à faire du training avec
+COEFS_clipping_and_linear_scaling = { # estimated 18 may 2022 on exp1v4/v6 with a dataset usin xsarsea version without any normalization integrated estimation_SLC_spectrum_normalization_and_outlier.ipynb
+    're_clip': 5.435146994785513e+19, # 7*99e percentile 1.3% data clipped
+    're_offset' : 34048801642485.62,
+    're_fact' : 3.651009800615139e+17, # 70e percentile -> std 8.2 et maximum 149
+    'im_clip':4.670750837386242e+18, #7*99e percentile 1.5% data clipped
+    'im_offset' : 7734889022997.355,
+    'im_fact':3.0584672481884656e+16, #70e percentile -> std 6.1 et maximum 153
+ }
 
+COEFS_clipping_and_linear_scaling_v2 = { # estimated 24 may 2022 on exp1v4/v7 with a dataset usin xsarsea version without any normalization integrated estimation_SLC_spectrum_normalization_and_outlier.ipynb
+    're_clip': 5.8124298085085454e+19, # 7*99e percentile 1.6% data clipped
+    're_offset' : 0, # due to clipping negative values to zeros
+    're_fact' : 3.60540621201969e+17, # 70e percentile -> std 9.2 et maximum 161
+    'im_clip':9.66795441691413e+18, # 25*99e percentile
+    'im_offset' : None,
+    'im_fact':1e17 #-> std 2.1 maxi +/-77'
+ }
+# better to loose few very high spectrum than lots of spectrum close to the mean
 def _conv_timeofday(in_t):
     """Converts data acquisition time
     Args:
@@ -25,7 +46,74 @@ def _conv_deg(in_angle, is_inverse=False, in_cos=None, in_sin=None):
     angle = np.deg2rad(in_angle)
     return (np.cos(angle), np.sin(angle))
 
-def conv_real(x):
+def apply_clipping_and_linear_scaling(re_spec,clipping_val,factor):
+    """
+
+    :param re_spec: spectra 72x60
+    :param clipping_val: flaot
+    :param factor: float
+    :return:
+    """
+    #clipping instead of filtering
+    re_spec4 = re_spec.copy()
+    re_spec4[re_spec>clipping_val] = clipping_val
+    #np_spectra_with_higher_val = np.any(re_spec>clipping_val,axis=1).sum()
+    #pct = 100*np_spectra_with_higher_val/re_spec.shape[0]
+    val_2 = np.nanmin( re_spec4)
+    re_spec5 = re_spec4-val_2
+    #val_3 = np.nanpercentile(re_spec5.ravel(),percentile)
+    re_spec6 = re_spec5/factor
+    return clipping_val,val_2,factor,re_spec6
+
+def apply_clipping_and_linear_scaling_im(im_spec3,percentile=None,divide_fact=None,clipping_val=None):
+    pct_cliped = np.nan
+    im_spec4 = im_spec3.copy()
+    if clipping_val is not None and np.isfinite(clipping_val):
+        im_spec4[abs(im_spec3)>clipping_val] = clipping_val
+        np_spectra_with_higher_val = np.any(abs(im_spec3)>clipping_val,axis=1).sum()
+        pct_cliped = 100*np_spectra_with_higher_val/im_spec3.shape[0]
+        print('nb spec with clipped values',np_spectra_with_higher_val,pct_cliped)
+    #val_2 = np.nanmin( im_spec4)
+    val_2 = 0 #je test sans le decalage qui semble inutile
+    im_spec5 = im_spec4-val_2
+    if percentile is not None:
+        val_3 = np.nanpercentile(im_spec5.ravel(),percentile)
+    else:
+        val_3 = divide_fact
+    im_spec6 = im_spec5/val_3
+    return clipping_val,percentile,val_2,val_3,im_spec6,pct_cliped
+
+def apply_clipping_and_linear_scaling_re(re_spec3,percentile=None,divide_fact=None,clipping_val=None):
+    """
+
+    :param re_spec3: nd.array
+    :param percentile: int to find the dividing factor
+    :param divide_fact: float to give directly a value insted of a percentile
+    :param clipping_val: float
+    :return:
+    """
+    # test normalization
+    #on clip a zero en bas
+    pct_clipped = np.nan
+    re_spec3[re_spec3<0] = 0. #the extrapolation  int conversion_polar_cartesian() with kwargs={"fill_value": None} introduce values below zero for 0.27% of the pts
+     #clipping instead of filtering
+    re_spec4 = re_spec3.copy()
+    if clipping_val is not None and np.isfinite(clipping_val):
+        re_spec4[re_spec3>clipping_val] = clipping_val
+        np_spectra_with_higher_val = np.any(re_spec3>clipping_val,axis=1).sum()
+        pct_clipped = 100*np_spectra_with_higher_val/re_spec3.shape[0]
+    val_2 = np.nanmin( re_spec4)
+    re_spec5 = re_spec4-val_2
+    if percentile is not None:
+        val_3 = np.nanpercentile(re_spec5.ravel(),percentile)
+    else:
+        val_3 = divide_fact
+    re_spec6 = re_spec5/val_3
+    return clipping_val,percentile,val_2,val_3,re_spec6,pct_clipped
+
+
+
+def conv_real(x,exp_id=None):
     """Scales real part of spectrum.
     Args:
         real: numpy array of shape (notebooks, 72, 60)
@@ -33,11 +121,27 @@ def conv_real(x):
         scaled
     """
     assert len(x.shape) == 3
-    assert x.shape[1:] == (72, 60)
-    x = (x - 8.930369) / 41.090652 
+    #assert x.shape[1:] == (72, 60) # commented to allow cartesian xspec
+    if exp_id is None:
+        x = (x - 8.930369) / 41.090652
+    elif exp_id==1:
+        #x = x / 1150179.354676391 # le min etant en e-30 je me permet de ne pas le remettre a zero (tested in stats_dataset_training_exp1.ipynb)
+        #x = x / 266297713.37484202
+        #x = x /268312468.14585936
+        #x = x / 2106218840.5231066 #update 27 sept a partir des spectre SLC dans la v3 des fichiers individuels pour generer D1 (stats_dataset_training_exp1.ipynb)
+        #x = x / 9618124186.148272 # update 1st oct 2021 apres investigation complete de 2018 dataset brut
+        #x = x / 2.83349121369e+14 # update 4th oct 2021 apres investigattion complete de tout le dataset
+        #x = x / PERCENTILE_99['re'] # 99 percentile
+        # _,_,_,x = apply_clipping_and_linear_scaling(x, clipping_val=COEFS_clipping_and_linear_scaling['re_clip'],
+        #                                               factor=COEFS_clipping_and_linear_scaling['re_fact'])
+        _,_,_,_,x,_ = apply_clipping_and_linear_scaling_re(x, clipping_val=COEFS_clipping_and_linear_scaling_v2['re_clip'],
+                                                      divide_fact=COEFS_clipping_and_linear_scaling_v2['re_fact'])
+    else:
+        raise Exception('unkown exp_id %s'%exp_id)
+
     return x
 
-def conv_imaginary(x):
+def conv_imaginary(x,exp_id=None):
     """Scales imaginary part of spectrum.
     Args:
         real: numpy array of shape (notebooks, 72, 60)
@@ -45,8 +149,23 @@ def conv_imaginary(x):
         scaled
     """
     assert len(x.shape) == 3
-    assert x.shape[1:] == (72, 60)
-    x = (x - 4.878463e-08) / 6.4714637
+    #assert x.shape[1:] == (72, 60) # commented to allow cartesian xspec
+    if exp_id is None :
+        x = (x - 4.878463e-08) / 6.4714637
+    elif exp_id == 1: #evaluate in stats_dataset_training_exp1.ipynb
+        #x = x / 330446.8692954672  # le min etant en e-30 je me permet de ne pas le remettre a zero
+        #x = x/6605101.291873287
+        #x = x/156310666.1937346 #update 27 sept a partir des spectre SLC dans la v3 des fichiers individuels pour generer D1 (stats_dataset_training_exp1.ipynb) (2287 spectres sample)
+        #x = x / 863468236.6305181 # update 1st oct 2021 apres investigation complete du dataset brut
+        #x = x / 1.52703468968e+11 # update 4th oct 2021 apres investigattion complete de tout le dataset
+        #x = x / PERCENTILE_99['im'] # 99 percentile
+        # _,_,_,x = apply_clipping_and_linear_scaling(x, clipping_val=COEFS_clipping_and_linear_scaling['im_clip'],
+        #                                               factor=COEFS_clipping_and_linear_scaling['im_fact'])
+        _,_,_,_,x,_ = apply_clipping_and_linear_scaling_im(x, clipping_val=COEFS_clipping_and_linear_scaling_v2['im_clip'],
+                                                      divide_fact=COEFS_clipping_and_linear_scaling_v2['im_fact'])
+    else :
+        raise Exception('unkown exp_id %s' % exp_id)
+
     return x
  
 
@@ -135,6 +254,21 @@ def conv_time(timeSAR):
     time_of_day = time_transf(timeSAR)
     #return np.column_stack(timeSAR, time_of_day)
     return time_of_day
+
+def conv_time_doy(timeSAR):
+    """
+    Return day or year feature.
+    :param :timeSAR datetime obj
+    """
+    doys = []
+    for tti in timeSAR:
+        ts = (tti - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+        ts2 = datetime.datetime.utcfromtimestamp(ts)
+        doy = int(ts2.strftime('%j'))
+        doys.append(doy)
+    timeSAR = np.array(doys)
+    day_of_year = timeSAR / 365.  #
+    return day_of_year
     
 def conv_incidence(incidenceAngle):
     """
@@ -145,3 +279,12 @@ def conv_incidence(incidenceAngle):
     lbl = np.array(incidenceAngle > 30, dtype='float32')
     incidenceAngle = incidenceAngle / 30.
     return np.column_stack([incidenceAngle, lbl])
+
+def conv_incidence_iw(incidenceAngle):
+    # info from esa copernicus website : 29.1° - 46.0° IW
+    #min_inc_iw = 29.1
+    min_inc_iw = 22 #mini for WV
+    max_inc_iw = 46.0
+    res = (incidenceAngle - min_inc_iw)/max_inc_iw # range 0-0.52
+    #res = (incidenceAngle - min_inc_iw) / (max_inc_iw-min_inc_iw) # a better normalization not yet tested 15 oct 21: range 0-1
+    return res

@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 import math
 from tensorflow.keras.utils import Sequence
-    
+import logging
 class SARGenerator(Sequence):
     """
     Generator to be passed to fit_generator, predict_generator, etc. using Keras interface.
@@ -13,7 +13,21 @@ class SARGenerator(Sequence):
                        If hdf5 file has no group structure, will default to root.
     batch_size (int) -- number of data points to read out at a time. (last read may have less than batch size)
     """
-    def __init__(self, filename, batch_size=100, subgroups=None):
+    def __init__(self, filename, batch_size=100, subgroups=None,exp=None,levelinputs='ocn'):
+        """
+
+        :param filename:
+        :param batch_size:
+        :param subgroups:
+        :param exp: int 1 -> experiment with ocn or slc inputs
+        :param levelinputs str: slc or ocn
+        """
+        self.levelinputs = levelinputs
+        self.exp = exp
+        if self.exp==1:
+            self.spectra_varname = 'spectrum_'+self.levelinputs
+        else:
+            self.spectra_varname = 'spectrum'
         self.filename = filename
         self.h5file = h5py.File(filename, 'r')
         self.batch_size = batch_size
@@ -21,15 +35,18 @@ class SARGenerator(Sequence):
         self.groups = subgroups if subgroups is not None else [None]
         self._calc_batches_per_group()
 
+
+
     def __del__(self):
         self.h5file.close()
         
     def _num_examples_group(self, group):
         """Number of notebooks in file."""
+
         if group is None:
-            return self.h5file['spectrum'].shape[0]
+            return self.h5file[self.spectra_varname].shape[0]
         else:
-            return self.h5file[group]['spectrum'].shape[0]
+            return self.h5file[group][self.spectra_varname].shape[0]
     
     def _calc_batches_per_group(self):
         """
@@ -56,7 +73,8 @@ class SARGenerator(Sequence):
             self.igroup2group[i] = g
             self.idx2igroup[count:count+n] = i
             self.idx2inbatchidx[count:count+n] = np.arange(0, n, dtype=int)
-        
+            logging.info('correction apllied')
+            count += n #correction to use also 2017 agrouaze June 2021
         return
     
     def __len__(self):
@@ -75,14 +93,19 @@ class SARGenerator(Sequence):
         dataset = self.h5file if group is None else self.h5file[group]
         
         # Image spectra.
-        spectrum = dataset['spectrum'][start:stop]
+        spectrum = dataset[self.spectra_varname][start:stop]
         assert spectrum.shape[1:] == (72, 60, 2)
         assert not np.any(np.isnan(spectrum))
         #assert not np.any(spectrum > 10000), spectrum.max()
         spectrum[spectrum > 100000] = 0
         
         # High level features. Should be preprocessed already.
-        names = ['cwave', 'dxdt', 'latlonSARcossin', 'todSAR', 'incidence', 'satellite']
+        if self.exp==1:
+            cwave_varname = 'cwave_'+self.levelinputs
+        else:
+            cwave_varname = 'cwave'
+
+        names = [cwave_varname, 'dxdt', 'latlonSARcossin', 'todSAR', 'incidence', 'satellite']
         features = []
         for name in names:
             if name in dataset:
@@ -106,7 +129,7 @@ class SARGenerator(Sequence):
             assert not np.any(target > 100), target
         else:
             target = None
-        
+        #logging.info('spectrum : %s',spectrum.shape)
         inputs = [spectrum, features]
         outputs = target
         return inputs, outputs

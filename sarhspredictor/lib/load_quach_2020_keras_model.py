@@ -16,7 +16,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model, load_model
 import tensorflow.keras as keras
 from sarhspredictor.config import model45path,model45stdpath,model_heteroskedastic_2017,\
-    model_IFR_replication_quach2020_sadowski_release_5feb2021,model_IFR_replication_quach2020_sadowski_release_5feb2021_v2
+    model_IFR_replication_quach2020_sadowski_release_5feb2021,model_IFR_replication_quach2020_sadowski_release_5feb2021_v2,\
+    model_exp1
 print('keras',keras.__version__)
 print('tensorflow',tf.__version__)
 print()
@@ -78,6 +79,17 @@ def load_quach2020_model_v2():
     model = load_model(file_model, custom_objects=custom_objects)
     return model
 
+def load_quach2020_model_exp1():
+    """
+
+    :return:
+    """
+    #file_model = '/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+    file_model = model_exp1
+    custom_objects = {'Gaussian_NLL':Gaussian_NLL, 'Gaussian_MSE':Gaussian_MSE}
+    model = load_model(file_model, custom_objects=custom_objects)
+    return model
+
 def load_quach2020_model_v2_alt(version=1):
     """
     replicate model of the official model provided by Sadowski in feb 2021 (trained in 43min at ifremer)
@@ -103,6 +115,13 @@ def load_quach2020_model_45_std_tuned():
     model = load_model(stdtuned_path,custom_objects=custom_objects)
     return model
 
+
+
+def load_tgrange_keras_v1():
+    custom_objects = {'Gaussian_NLL': Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE}
+    ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/model_keras_period_2015_2018_SLC_spectrum_IFR_normalization_hawaiian_architecture_tgrange_July2022.h5'
+    model = tf.keras.models.load_model(ff,custom_objects=custom_objects)
+    return model
 
 # def load_like_in_notebook_train_uncertainty_with_existing():
 #     """

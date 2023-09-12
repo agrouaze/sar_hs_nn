@@ -1,7 +1,9 @@
 model45path='/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/model_45.h5'
 model45stdpath='/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/model_45_std_tuned.h5'
 model_heteroskedastic_2017='/home1/datahome/agrouaze/git/SAR-Wave-Height/models/heteroskedastic_2017.h5'
+model_exp1 = "/home1/datawork/agrouaze/model_Hs_NN_WV_ALTIcwaveV4_regression_exp1_1.h5"
 model_IFR_replication_quach2020_sadowski_release_5feb2021 = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze.h5'
+model_IFR_replication_quach2020_sadowski_release_5feb2021_exp1 = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/exp1_agrouaze.h5'
 model_IFR_replication_quach2020_sadowski_release_5feb2021_v2 = '/home1/datahome/agrouaze/sources/sentinel1/hs_total/validation_quach2020/heteroskedastic_2017_agrouaze_v2.h5'
 land_polygon_path = '/home/datawork-cersat-exp/ipf/static/landmask/land_polygons'
 land_raster_path = '/home/datawork-cersat-exp/ipf/static/landmask/land_raster.nc'
