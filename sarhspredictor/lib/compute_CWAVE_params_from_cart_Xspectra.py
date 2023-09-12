@@ -21,6 +21,7 @@ import pandas as pd
 import copy
 import time
 import os
+import pickle
 import datetime
 from sarhspredictor.lib.pol_cart_trans_jstopa_transcoding_furniture_cls import pol_cart_trans
 import netCDF4
@@ -332,6 +333,35 @@ def format_input_CWAVE_vector_from_SLC ( cspcRe,cspcIm,incidenceangle,s0,nv,kx_o
         cspcReX = np.zeros((71,85))
         cspcImX = np.zeros((71,85))
     logging.debug('subset_ok %s',subset_ok)
+
+    ########save all variables in memory into a shelve file # 18 aug 2022 for tgrange
+    # import pickle
+    # filename = '/home1/scratch/agrouaze/cwave_pickle_dump.pkl'
+    # #my_shelf = shelve.open(filename, 'n')  # 'n' for new
+    # datadump = {}
+    # keys = ['DKX', 'DKY', 'KX', 'KY', 'P', 'S', 'a1', 'a2', 'alphak', 'alphat', 'condition_keep', 'cspc', 'cspcIm',
+    #         'cspcImX', 'cspcRe', 'cspcReX', 'datedt', 'dkx', 'dky', 'eta', 'f', 'f1', 'f2', 'f3', 'f4', 'f5',
+    #         'filename', 'g1', 'g2', 'g3', 'g3pre', 'g4', 'gamma', 'gdx', 'gdy', 'gi', 'h', 'ia', 'iiu', 'incidenceangle',
+    #         'indices', 'jj', 'kmax', 'kmin', 'kx', 'kx_ori', 'ky', 'ky_ori', 'latSAR', 'lonSAR', 'my_shelf', 'nkx',
+    #         'nky', 'ns', 'nv', 'petit_h', 's0', 'satellite', 'shelve', 'subset_ok', 't0', 'tmp', 'uniq_gdx',
+    #         'uniq_gdy', 'var_to_keep']
+    # for xxxu,vavava in enumerate([DKX,DKY,KX,KY,P,S,a1,a2,alphak,alphat,condition_keep,cspc,cspcIm,cspcImX,cspcRe,cspcReX,datedt,dkx,dky,
+    #             eta,f,f1,f2,f3,f4,f5,filename,g1,g2,g3,g3pre,g4,gamma,gdx,gdy,gi,h,ia,iiu,incidenceangle,indices,jj,kmax,
+    #             kmin,kx,kx_ori,ky,ky_ori,latSAR,lonSAR,nkx,nky,ns,nv,petit_h,s0,satellite,subset_ok,t0,tmp,
+    #             uniq_gdx,uniq_gdy,var_to_keep]):
+    # #for key in dir():
+    #
+    #             datadump[keys[xxxu]] = vavava
+    #     # except TypeError:
+    #     #     #
+    #     #     # __builtins__, my_shelf, and imported modules can not be shelved.
+    #     #     #
+    #     #     print('ERROR shelving: {0}'.format(key))
+    # #my_shelf.close()
+    # fid = open(filename,'wb')
+    # pickle.dump(datadump,fid)
+    # fid.close()
+    # print(filename)
     return subset_ok,cspcReX,cspcImX,cspcRe,kx,ky,S  # [:,idd]
 
 

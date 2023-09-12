@@ -121,7 +121,7 @@ def conv_real(x,exp_id=None):
         scaled
     """
     assert len(x.shape) == 3
-    assert x.shape[1:] == (72, 60)
+    #assert x.shape[1:] == (72, 60) # commented to allow cartesian xspec
     if exp_id is None:
         x = (x - 8.930369) / 41.090652
     elif exp_id==1:
@@ -149,7 +149,7 @@ def conv_imaginary(x,exp_id=None):
         scaled
     """
     assert len(x.shape) == 3
-    assert x.shape[1:] == (72, 60)
+    #assert x.shape[1:] == (72, 60) # commented to allow cartesian xspec
     if exp_id is None :
         x = (x - 4.878463e-08) / 6.4714637
     elif exp_id == 1: #evaluate in stats_dataset_training_exp1.ipynb

@@ -7,6 +7,7 @@ sur datamem1: 2500 daily files -> 1h30min
 sur noeud mpi en .zarr: 379k files en 2 heures.
 4094 files en zarr -> 2.6h
 4282 files (503017 pts) -> 3.6h
+hsDL -> 501kpts -> 1.5h
 """
 import os
 from dask.distributed import Client, LocalCluster
@@ -30,8 +31,9 @@ def preproc_analogs(ds):
 def preproc_Hs_NN_DL(ds):
     filee = ds.encoding['source']
     #keys_to_drop = ['dk', 'crossSpectraReCart_tau2', 'crossSpectraImCart_tau2']
-    if np.any(ds['phi']>4):
-        ds['phi'] = xarray.DataArray(np.radians(np.arange(0,360,5)))
+    if 'phi' in ds:
+        if np.any(ds['phi']>4):
+            ds['phi'] = xarray.DataArray(np.radians(np.arange(0,360,5)))
     #for vv in keys_to_drop:
     #    ds = ds.drop(vv)
     return ds
@@ -45,7 +47,7 @@ def xarray_aggregate(input_files,file_dest,application='analogs'):
     """
     if application == 'analogs':
         ds = xarray.open_mfdataset(input_files,preprocess=preproc_analogs,combine='nested',concat_dim='time_sar')
-    elif application == 'hsDL':
+    elif application == 'hsDL' or application == 'WW3DL':
         ds = xarray.open_mfdataset(input_files, preprocess=preproc_Hs_NN_DL, combine='nested', concat_dim='nsample')
     else:
         raise Exception('unknown application')
@@ -94,7 +96,7 @@ if __name__ == '__main__':
         for handler in root.handlers :
             root.removeHandler(handler)
     import argparse
-    apps = ['analogs','hsDL']
+    apps = ['analogs','hsDL','WW3DL']
     example_inputdir = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v1/'
     parser = argparse.ArgumentParser(description='aggregattion of training files for analogs and Deep learning')
     parser.add_argument('--verbose',action='store_true',default=False)
@@ -114,7 +116,7 @@ if __name__ == '__main__':
     t0 = time.time()
     if args.application == 'analogs':
         files_src = sorted(glob.glob(os.path.join(args.inputdir,'*','*', '*.nc')))
-    elif args.application == 'hsDL':
+    elif args.application == 'hsDL' or args.application == 'WW3DL':
         files_src = sorted(glob.glob(os.path.join(args.inputdir, '*', '*.nc')))
     else:
         raise Exception('not handle application')
@@ -138,6 +140,8 @@ if __name__ == '__main__':
         ds = ds.chunk({'phi':72,'k':60,'cwave_coords':20,'kx':164,'ky':84,'time_sar':20000})
     elif args.application == 'hsDL':
         ds = ds.chunk({'phi': 72, 'k': 60, 'cwave_coord': 20, 'nsample': 20000,'latSARcossinlonSARcossin':4})
+    elif args.application == 'WW3DL':
+        ds = ds.chunk({'kx': 164, 'ky': 84, 'cwave_coord': 20, 'nsample': 20000,'latSARcossinlonSARcossin':4})
     logging.info('start to write the destination file : %s',file_dest)
     if os.path.exists(file_dest):
         logging.warning('destination file already exists!!')

@@ -25,7 +25,7 @@ def prep(ds):
     ds = ds.rename( {'time_sar':'time'})
     return ds
 
-def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False,dev=False):
+def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False,dev=False,config='cartesianParth'):
     """
 
     :param sta: datetime
@@ -222,24 +222,45 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False,dev=False):
 
                     # Spectral data.
                     logging.debug('x spec Re: %s',src['crossSpectraRePol'].values.shape)
-                    tmpre = src['crossSpectraRePol'].values#.squeeze()
-                    tmpre = np.swapaxes(tmpre,1,2)
-                    tmpim = src['crossSpectraImPol'].values#.squeeze()
-                    tmpim = np.swapaxes(tmpim,1,2)
+                    if config=='cartesianParth':
+                        tmpre = src['crossSpectraReCart_tau2'].values
+                        tmpim = src['crossSpectraImCart_tau2'].values
+                        grid_spec = 'cartesian'
+                        coco = {'nsample':src['time'].values,'kx':src['crossSpectraReCart_tau2'].kx.values,
+                                'ky':src['crossSpectraReCart_tau2'].ky.values,'re_im':np.arange(2)}
+                        didi = ['nsample','kx','ky','re_im']
+                    else:
+                        tmpre = src['crossSpectraRePol'].values#.squeeze()
+                        grid_spec = 'polar'
+                        tmpre = np.swapaxes(tmpre,1,2)
+                        tmpim = src['crossSpectraImPol'].values#.squeeze()
+                        tmpim = np.swapaxes(tmpim,1,2)
+                        didi = ['nsample','phi','k','re_im']
+                        coco = {'nsample': src['time'].values,
+                                                                            'k':kref,'phi':np.arange(0,360,5),
+                                                                            're_im':np.arange(2)}
                     logging.debug('tmpre : %s',tmpre.shape)
                     re = preprocess.conv_real(tmpre,exp_id=1)
                     im = preprocess.conv_imaginary(tmpim,exp_id=1)
                     x = np.stack((re, im), axis=3)
                     logging.debug('spectrum : %s',x.shape)
                     #fd.create_dataset('spectrum', data=x) # spectrum doesnt seems to be used at the next preprocessing step ( aggregate_monthly_training_files.aggregate() )
-                    destds['spectrum_slc_normed'] = xarray.DataArray(x, coords={'nsample': src['time'].values,
-                                                                            'k':kref,'phi':np.arange(0,360,5),
-                                                                            're_im':np.arange(2)},
-                                                           dims=['nsample','phi','k','re_im'],
+                    destds['spectrum_slc_normed'] = xarray.DataArray(x, coords=coco,
+                                                           dims=didi,
                                                                  attrs={
                                                                      'description': 'normed real and imaginary part of the image cross spectra from SLC SAR WV',
+                                                                     'grid':grid_spec,
+                                                                     'wavelength_min':2*np.pi/kref.max(),
+                                                                     'wavelength_max': 2 * np.pi / kref.min(),
                                                                      'units': ''}
                                                                  )
+                    if config == 'cartesianParth':
+                        destds['tiff_basename'] = xarray.DataArray(src['tiff'], coords={'nsample': src['time'].values},
+                                                           dims=['nsample'],
+                                                           attrs={
+                                                               'description': 'basename path of tiff Sentinel-1 WV SLC measurement',
+                                                               'units': ''}
+                                                           )
                     # add spectral data OCN
                     # logging.debug('x spec Re: %s',src['cspcRe'].values.shape)
                     # tmpre = src['cspcRe'].values.squeeze()
@@ -323,6 +344,11 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False,dev=False):
                                                         dims=['nsample'],
                                                         attrs={'description': 'denoised sigma0 from WV product SLC',
                                                                'units': 'dB'})
+                    if config=='cartesianParth':
+                        destds['azimuth_cutoff_wavelength'] = xarray.DataArray(src['azimuth_cutoff'].values, coords={'nsample': src['time'].values},
+                                                            dims=['nsample'],
+                                                            attrs={'description': 'azimuth cutoff wavelength computed on cartesian cross spectra',
+                                                                   'units': 'm'})
                     #fd.create_dataset('normalizedVariance', data=src['normalizedVariance'].values) #added by agrouaze
                     # destds['normalizedVariance'] = xarray.DataArray(src['normalizedVariance'].values, coords={'nsample': src['time'].values},
                     #                                     dims=['nsample'],
@@ -355,19 +381,20 @@ def normalize_training_ds(sta,sto,in_dd,out_dd,redo=False,dev=False):
                                                             'description': 'latitude at the center of WV image',
                                                             'units': 'degree'})
                     #fd.create_dataset('cspcRe_slc', data=src['crossSpectraRePol'].values) #added by agrouaze
-                    destds['cspcRe_slc'] = xarray.DataArray(src['crossSpectraRePol'].values,
-                                                        coords={'nsample': src['time'].values,'k':kref,'phi':np.arange(0,360,5)},
-                                                        dims=['nsample','k','phi'],
-                                                        attrs={
-                                                            'description': 'real part of cross spectra computed from SLC product using xsar',
-                                                            'units': ''})
-                    #fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
-                    destds['cspcIm_slc'] = xarray.DataArray(src['crossSpectraImPol'].values,
-                                                        coords={'nsample': src['time'].values,'k':kref,'phi':np.arange(0,360,5)},
-                                                        dims=['nsample','k','phi'],
-                                                        attrs={
-                                                            'description': 'imaginary part of cross spectra computed from SLC product using xsar',
-                                                            'units': ''})
+                    if config=='polar':
+                        destds['cspcRe_slc'] = xarray.DataArray(src['crossSpectraRePol'].values,
+                                                            coords={'nsample': src['time'].values,'k':kref,'phi':np.arange(0,360,5)},
+                                                            dims=['nsample','k','phi'],
+                                                            attrs={
+                                                                'description': 'real part of cross spectra computed from SLC product using xsar',
+                                                                'units': ''})
+                        #fd.create_dataset('cspcIm_slc', data=src['crossSpectraImPol'].values) #added by agrouaze
+                        destds['cspcIm_slc'] = xarray.DataArray(src['crossSpectraImPol'].values,
+                                                            coords={'nsample': src['time'].values,'k':kref,'phi':np.arange(0,360,5)},
+                                                            dims=['nsample','k','phi'],
+                                                            attrs={
+                                                                'description': 'imaginary part of cross spectra computed from SLC product using xsar',
+                                                                'units': ''})
 
                     destds['CWAVE_SLC_normed'] = xarray.DataArray(cwave_slc,
                                                         coords={'nsample': src['time'].values,'cwave_coord':np.arange(22)},
@@ -412,6 +439,7 @@ if __name__ == '__main__':
     parser.add_argument ('--stopdate',action='store',help='YYYYMMDD.',required=True)
     parser.add_argument('--redo',action='store_true',default=False,required=False,help='redo existing output files')
     parser.add_argument('--dev',action='store_true',default=False,required=False,help='reduce input files to 3 files')
+    parser.add_argument('--spectra',choices=['cartesianParth','polar'],help='do you want cartesianParth or polar?',default='polar')
     args = parser.parse_args ()
 
     fmt = '%(asctime)s %(levelname)s %(filename)s(%(lineno)d) %(message)s'
@@ -450,11 +478,13 @@ if __name__ == '__main__':
     out_dd = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/v9_norm' # all variables CWAVE , HLF, spec OCN and SLC, needed by T Grange for validating the change of spectrum only (June 2022)
     out_dd = '/home1/scratch/agrouaze/normalization_test_exp2/'
     out_dd = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v2_normed/'
+    out_dd = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v2_normed_cartesian/' # for Parth Triparti
     #out_dd = '/home1/scratch/agrouaze/'
     logging.info('input dir %s',in_dd)
     logging.info('output dir : %s',out_dd)
+    logging.info('args.spectra : %s',args.spectra)
     normalize_training_ds(sta=datetime.datetime.strptime(args.startdate,'%Y%m%d'),
                           sto=datetime.datetime.strptime(args.stopdate,'%Y%m%d'),in_dd=in_dd,out_dd=out_dd,redo=args.redo,
-                          dev=args.dev)
+                          dev=args.dev,config=args.spectra)
     logging.info('done in %1.3f min',(time.time()-t0)/60.)
     logging.info('peak memory usage: %s Mbytes',resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.)

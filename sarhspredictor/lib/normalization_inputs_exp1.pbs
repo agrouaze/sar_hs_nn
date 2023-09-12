@@ -19,6 +19,6 @@ pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib/normalization_in
 pyexe=/home1/datahome/agrouaze/git/sar_hs_nn/sarhspredictor/lib/normalization_inputs_exp2.py # data 2019-2022 100% IFREMER SLC
 #start stop inputs YYYYMMDD
 # redo option added for v7_norm because previous files were with a different normalization
-$pybin $pyexe --startdate ${1} --stopdate ${2}
+$pybin $pyexe --startdate ${1} --stopdate ${2} --spectra cartesianParth
 echo end of python script exe
 exit 0

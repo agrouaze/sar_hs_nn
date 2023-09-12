@@ -1,17 +1,11 @@
 """
-exp 2: dataset D4 :  5 cross spectra nouguier on 5 sub domains of the WV image, Hs CMEMS alti, NRCS, Nv and date of year/lon/lat, no CWAVE
-Sept 2021
-revisite on May 2022
+dataset janver 2023:  cartesian cross spectra xsar_slc avec correction RI of the WV image, Hs CMEMS+CCi alti, NRCS, Nv and date of year/lon/lat, and CWAVE
+Janvier 2023
 A Grouazel
-inspiration rebuild_training_dataset_exp1.py
-tested with cwave
-INPUTS: SLC WV, alti CCI Hs,
-analysis done in 16752.573705911636 seconds -> presque 5 heures
-13/09/2021 07:35:35 INFO  peak memory usage: 49420.0546875 Mbytes -> presque 50Go !!!!!
 
 algo:
 1) read coloc CCI alti vs CCI SAR -> return tiff fullpath and Hs variables from alti
-2) read SLC tiff -> get NRCS , Nv, cross spectre total + sub images x5
+2) read SLC tiff -> get NRCS , Nv, cross spectre total (+ sub images x5)
 3) save all the params in a netCDF file (daily for instance one per SAR unit and per alti mission)
 
 env to test: xsar_pr46
@@ -19,8 +13,8 @@ env to test: xsar_pr46
 import os
 import sys
 sys.path.append('/home1/datahome/agrouaze/git/mpc/data_collect')
-sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/')
-sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/xsarsea')
+# sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/')
+# sys.path.append('/home1/datahome/agrouaze/git/xsarseafork/src/xsarsea')
 sys.path.append('/home1/datahome/agrouaze/git/sar_hs_nn')
 import logging
 import xarray
@@ -28,23 +22,26 @@ import numpy as np
 from scipy import interpolate
 import datetime
 import glob
-#import xsarsea
-import xsarsea.cross_spectra_core
-from xsarsea.cross_spectra_core import compute_SAR_cross_spectrum2
 import xsar
-import conversion_polar_cartesian
+# import conversion_polar_cartesian
 import warnings
 import copy
 import time
-import spectrum_clockwise_to_trigo #xsarsea
-import spectrum_rotation #xsarsea
+# import spectrum_clockwise_to_trigo #xsarsea
+# import spectrum_rotation #xsarsea
 from collections import defaultdict
 import get_full_path_from_measurement
+from xsarslc.processing.xspectra import compute_WV_intraburst_xspectra
+from xsarslc.processing import xspectra
+from dspec.spectrum_momentum import computeOrthogonalMoments # CWAVE like but corrected for filter
 #from sarhspredictor.lib.comp_xspec_on_5_sub_domains import prepare_image_splitting_in_5_domains,comp_xspec_for_one_of_the_5_subimages
 #from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 from sarhspredictor.lib.compute_CWAVE_params_from_cart_Xspectra import format_input_CWAVE_vector_from_SLC
+
+KMAX_CWAVE = 2 * np.pi / 60
+KMIN_CWAVE = 2 * np.pi / 625
 from shared_information import DIR_L2F_WV_DAILY
-from cut_off import get_cut_off_profile
+# from cut_off import get_cut_off_profile # deja dans xsar_slc je crois
 import resource
 warnings.simplefilter(action='ignore',category=FutureWarning)
 import traceback
@@ -62,7 +59,7 @@ POSSIBLES_CMEMS_ALTI = {'cryosat-2':'c2',
                         'cfosat':'cfo',
                      'jason-2':'j2',
                      'jason-3':'j3',
-                     'saral':'al'} # in v2.0.6
+                     'saral':'al'}
 reference_oswK_1145m_60pts = np.array([0.005235988, 0.00557381, 0.005933429, 0.00631625, 0.00672377,
     0.007157583, 0.007619386, 0.008110984, 0.008634299, 0.009191379,
     0.0097844, 0.01041568, 0.0110877, 0.01180307, 0.01256459, 0.01337525,
@@ -76,10 +73,9 @@ reference_oswK_1145m_60pts = np.array([0.005235988, 0.00557381, 0.005933429, 0.0
     0.1967456, 0.2094395])
 
 DIR_ORIGINAL_COLOCS = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/cci_orbit_files/v3.2_colocations_CMEMS_v7/'
-# DIR_ORIGINAL_COLOCS = '/home1/scratch/agrouaze/'
-OUTPUTDIR = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v1/'
+
 # prun->pbs already provide the outputdir
-OUTPUTDIR = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp2D4/v2/' #30 June 2022 add azimuth cutoff, and more colocations +20% environ
+OUTPUTDIR = '/home/datawork-cersat-public/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/dataset_jan23/'
 
 def read_coloc_file(sar_unit,date_day,alti_mission):
     """
@@ -124,112 +120,63 @@ def get_tiff_path(ds_coloc,sar_unit):
     return all_tiff_fp
 
 
-def store_cart_xspec_Ntau(crossSpectraReCart2tau,crossSpectraImCart2tau,subsetcoloc,prefix=''):
-    """
+# def store_cart_xspec_Ntau(crossSpectraReCart2tau,crossSpectraImCart2tau,subsetcoloc,prefix=''):
+#     """
+#
+#     :param crossSpectraReCart2tau: 2tau DataArray kx ky
+#     :param crossSpectraImCart2tau: 2tau DataArray kx ky
+#     :param subsetcoloc: xarray.Dataset
+#     :param prefix: str
+#     :return:
+#     """
+#
+#     tau_n = 2 # hard coded
+#     subsetcoloc[prefix+'crossSpectraReCart_tau%s' % (tau_n)] = crossSpectraReCart2tau
+#     #if tau_n != 0 :  # imag part of co spectre
+#
+#     subsetcoloc[prefix+'crossSpectraImCart_tau%s' % (tau_n)] = crossSpectraImCart2tau
+#     subsetcoloc['kx'].attrs['max'] = np.amax(subsetcoloc['kx'].values)
+#     subsetcoloc['kx'].attrs['min'] = np.amin(subsetcoloc['kx'].values)
+#     subsetcoloc['ky'].attrs['max'] = np.amax(subsetcoloc['ky'].values)
+#     subsetcoloc['ky'].attrs['min'] = np.amin(subsetcoloc['ky'].values)
+#     return subsetcoloc
 
-    :param crossSpectraReCart2tau: 2tau DataArray kx ky
-    :param crossSpectraImCart2tau: 2tau DataArray kx ky
-    :param subsetcoloc: xarray.Dataset
-    :param prefix: str
-    :return:
-    """
-
-    tau_n = 2 # hard coded
-    subsetcoloc[prefix+'crossSpectraReCart_tau%s' % (tau_n)] = crossSpectraReCart2tau
-    #if tau_n != 0 :  # imag part of co spectre
-
-    subsetcoloc[prefix+'crossSpectraImCart_tau%s' % (tau_n)] = crossSpectraImCart2tau
-    subsetcoloc['kx'].attrs['max'] = np.amax(subsetcoloc['kx'].values)
-    subsetcoloc['kx'].attrs['min'] = np.amin(subsetcoloc['kx'].values)
-    subsetcoloc['ky'].attrs['max'] = np.amax(subsetcoloc['ky'].values)
-    subsetcoloc['ky'].attrs['min'] = np.amin(subsetcoloc['ky'].values)
-    return subsetcoloc
 
 
-def store_pol_xspec_Ntau(all_computed_cart_xspectrum,platform_heading,nperseg,prefix='',apply_rotations=True):
-    """
-    1) interpolate the cartesian x spectra on a common grid cartesian
-    2) interpolate the cartesian x spectra on a polar grid
-    :param all_computed_cart_xspectrum:
-    :param nperseg:
-    :param which_tau: list of int to tell which tau 0 1 or 2 have to be kept
-    :param prefix: str
-    :return:
-    """
-    t0 = time.time()
-    tau_n = 2
-    #for tau_n in which_tau :
 
-        # for n_spec in range(len(allspecs['cross-spectrum_%stau'%tau_n])):
-        # interpolate the cartesian cross spectra on a fixed grid
-        # fixed_kx = np.arange(-0.39349586,0.39311158,0.00038427)
-    xspecReCart = np.abs(all_computed_cart_xspectrum['cross-spectrum_%stau'%tau_n].mean(dim='%stau'%tau_n).real)
-    xspecImCart = all_computed_cart_xspectrum['cross-spectrum_%stau'%tau_n].mean(dim='%stau'%tau_n).imag
-    crossSpectraRePol = conversion_polar_cartesian.from_xCartesianSpectrum(xspecReCart,Nphi=72,
-                                                                                   ksampling='log',
-                                                                                   **{'k' : reference_oswK_1145m_60pts})
-    if apply_rotations :
-        crossSpectraRePol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-            crossSpectraRePol)
-        crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,
-                                                             -90.)  # This is for having origin at North # 90->-90 correction May 2022
-        crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,platform_heading)
-    #subsetcoloc[prefix+'crossSpectraRePol_tau%s' % (tau_n)] = crossSpectraRePol
-    #if tau_n != 0 :  # imag part of co spectre
-
-    crossSpectraImPol = conversion_polar_cartesian.from_xCartesianSpectrum(xspecImCart,Nphi=72,
-                                                                                   ksampling='log',
-                                                                                   **{'k' : reference_oswK_1145m_60pts})
-    if apply_rotations:
-        crossSpectraImPol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
-            crossSpectraImPol)
-        crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,
-                                                             -90.)  # This is for having origin at North
-        crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,platform_heading)
-    #subsetcoloc[prefix + 'crossSpectraImPol_tau%s' % (tau_n)] = crossSpectraImPol
-    # subsetcoloc[prefix+'crossSpectraImPol_tau%s' % (tau_n)] = xarray.DataArray(z_im_new,dims=['kx','ky'],
-    #                                                                      coords={'kx' : fixed_kx,
-        #                                                                              'ky' : fixed_ky})
-    crossSpectraRePol.attrs['description_details'] = 'nperseg az %s x range %s'%(nperseg['azimuth'],nperseg['range'])
-    crossSpectraImPol.attrs['description_details'] = 'nperseg az %s x range %s' % (nperseg['azimuth'], nperseg['range'])
-    crossSpectraRePol.attrs['description'] = 'image cross spectra real part polar grid'
-    crossSpectraImPol.attrs['description'] = 'image cross spectra imaginary part polar grid'
-    logging.info('time to convert cart->pol : %s1.1f seconds', (time.time() - t0))
-    return crossSpectraRePol,crossSpectraImPol
-
-def average_cartesian_spec_2tau(all_computed_cart_xspectrum,nperseg,tau_n=2):
-    """
-
-    :param all_computed_cart_xspectrum: xarrayDataset
-    :param nperseg: dict
-    :param tau_n: int
-    :return:
-    """
-    t0 = time.time()
-    fixed_kx = np.linspace(-0.39349586, 0.39311158, nperseg['range'])
-    fixed_ky = np.linspace(-0.7596674, 0.75892554, nperseg['azimuth'])
-    x = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n]['kx'].values
-    y = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n]['ky'].values
-    z_re = np.abs(all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n].mean(dim='%stau' % tau_n).real)
-    # z_re.assign_coords({'kx':fixed_kx,'ky':fixed_ky})
-    f_re = interpolate.interp2d(x, y, z_re.values, kind='linear')
-    z_re_new = f_re(fixed_kx, fixed_ky)
-    z_re_new_da = xarray.DataArray(z_re_new, dims=['kx', 'ky'],
-                                   coords={'kx': fixed_kx,
-                                           'ky': fixed_ky})
-    z_im = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n].mean(dim='%stau' % tau_n).imag
-    # z_im.assign_coords({'kx' : fixed_kx,'ky' : fixed_ky})
-    f_im = interpolate.interp2d(x, y, z_im.values, kind='linear')
-    z_im_new = f_im(fixed_kx, fixed_ky)
-    z_im_new_da = xarray.DataArray(z_im_new, dims=['kx', 'ky'],
-                                   coords={'kx': fixed_kx,
-                                           'ky': fixed_ky})
-    logging.info('time to re grid cartesian spec : %s1.1f seconds', (time.time() - t0))
-    return z_re_new_da,z_im_new_da
+# def average_cartesian_spec_2tau(all_computed_cart_xspectrum,nperseg,tau_n=2):
+#     """
+#
+#     :param all_computed_cart_xspectrum: xarrayDataset
+#     :param nperseg: dict
+#     :param tau_n: int
+#     :return:
+#     """
+#     t0 = time.time()
+#     fixed_kx = np.linspace(-0.39349586, 0.39311158, nperseg['range'])
+#     fixed_ky = np.linspace(-0.7596674, 0.75892554, nperseg['azimuth'])
+#     x = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n]['kx'].values
+#     y = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n]['ky'].values
+#     z_re = np.abs(all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n].mean(dim='%stau' % tau_n).real)
+#     # z_re.assign_coords({'kx':fixed_kx,'ky':fixed_ky})
+#     f_re = interpolate.interp2d(x, y, z_re.values, kind='linear')
+#     z_re_new = f_re(fixed_kx, fixed_ky)
+#     z_re_new_da = xarray.DataArray(z_re_new, dims=['kx', 'ky'],
+#                                    coords={'kx': fixed_kx,
+#                                            'ky': fixed_ky})
+#     z_im = all_computed_cart_xspectrum['cross-spectrum_%stau' % tau_n].mean(dim='%stau' % tau_n).imag
+#     # z_im.assign_coords({'kx' : fixed_kx,'ky' : fixed_ky})
+#     f_im = interpolate.interp2d(x, y, z_im.values, kind='linear')
+#     z_im_new = f_im(fixed_kx, fixed_ky)
+#     z_im_new_da = xarray.DataArray(z_im_new, dims=['kx', 'ky'],
+#                                    coords={'kx': fixed_kx,
+#                                            'ky': fixed_ky})
+#     logging.info('time to re grid cartesian spec : %s1.1f seconds', (time.time() - t0))
+#     return z_re_new_da,z_im_new_da
 
 def add_WW3_spectra(date_sar,sar_unit):
     """
-
+    TODO: mettre le spectre WW3 en cartesien avec rotation prealable pour le mettre dans l'orientation de limage SAR, a confirmer avec Alx et Fred
     :param date_sar: datetime
     :param sar_unit:  str S1A or ...
     :return:
@@ -246,7 +193,7 @@ def add_WW3_spectra(date_sar,sar_unit):
     if len(effective_candidate)>0:
         daily_full_wv = effective_candidate[0]
         WVdaily_L2_IFR_ds = xarray.open_dataset(daily_full_wv)
-        WVdaily_L2_IFR_ds['ww3_spec_interp72x60']  =WVdaily_L2_IFR_ds['ww3_spec_interp72x60'].persist()
+        WVdaily_L2_IFR_ds['ww3_spec_interp72x60'] = WVdaily_L2_IFR_ds['ww3_spec_interp72x60'].persist()
         dates = WVdaily_L2_IFR_ds['fdatedt']
         indok = np.where(dates==np.datetime64(date_sar))[0]
         tmpWW3sp = WVdaily_L2_IFR_ds['ww3_spec_interp72x60'].isel(fdatedt=indok).values
@@ -258,7 +205,7 @@ def add_WW3_spectra(date_sar,sar_unit):
 
 def get_SAR_SLC_quantities(one_tiff,dev=False):
     """
-
+    #TODO : voir si on genere des L1B d abord et ensuite on fait le training dataset ou bien on fait les 2 en meme temps.
     :param one_tiff: str
     :param dev: bool
     :return:
@@ -281,6 +228,7 @@ def get_SAR_SLC_quantities(one_tiff,dev=False):
     xsar_s1ds = xsar.Sentinel1Dataset(str_gdal)
     xsar_s1ds.add_high_resolution_variables()
     xsar_s1ds.apply_calibration_and_denoising()
+    xsar_s1ds.datatree.load()
     xsarslc = xsar_s1ds.dataset
     logging.debug('xsarslc : %s', xsarslc)
     ta = xsarslc.attrs['platform_heading']
@@ -297,10 +245,13 @@ def get_SAR_SLC_quantities(one_tiff,dev=False):
     mid_range_ind = int(size_az / 2)
     mid_azi_ind = int(size_ra / 2)
     # lon_centroid,lat_centroid = xsar_s1ds.footprint.centroid.xy
-    lons_all = xsarslc['longitude'].values
-    lats_all = xsarslc['latitude'].values
-    lonsar = lons_all[mid_azi_ind, mid_range_ind]
-    latsar = lats_all[mid_azi_ind, mid_range_ind]
+    # lons_all = xsarslc['longitude'].values
+    # lats_all = xsarslc['latitude'].values
+    # lonsar = lons_all[mid_azi_ind, mid_range_ind]
+    # latsar = lats_all[mid_azi_ind, mid_range_ind]
+    x_0, y_0 = np.asarray(xsar_s1ds.datatree['geolocation_annotation'].ds['longitude'].values.shape) // 2
+    lonsar = xsar_s1ds.datatree['geolocation_annotation'].ds['longitude'].values[x_0,y_0]
+    latsar = xsar_s1ds.datatree['geolocation_annotation'].ds['latitude'].values[x_0, y_0]
     SLCWVds['lonsar_SLC'] = xarray.DataArray([lonsar], dims=['time_sar'])
     SLCWVds['lonsar_SLC'].attrs = {'description': 'longitude at center of SLC WV image',
                                        'unit': 'deg',
@@ -333,60 +284,37 @@ def get_SAR_SLC_quantities(one_tiff,dev=False):
                                    'alternative_name': 'heading angle / bearing angle',
                                    'unit': 'deg',
                                    'note': 'platform track angle can be different from local bearinig angle in SAR image'}
-    # same operation bu using level1 informations
+    # same operation but using level1 informations
     s1ds = xsar_s1ds.dataset
     #azimuthSpacing, rangeSpacing = xsar_s1ds.s1meta.image['ground_pixel_spacing']
-    rangeSpacing = xsar_s1ds.dataset['range_ground_spacing'].mean()
-    azimuthSpacing = xsar_s1ds.dataset['lineSpacing']
+    rangeSpacing = xsar_s1ds.dataset['sampleSpacing'].values
+    azimuthSpacing = xsar_s1ds.dataset['lineSpacing'].values
     s1ds.attrs['rangeGroundSpacing'] = rangeSpacing
     s1ds.attrs['azimuthSpacing'] = azimuthSpacing
-    dsslc = xsarsea.cross_spectra_core.read_slc(s1ds)
-    dsslc = dsslc.sel(pol='VV')
+
     logging.info('time to read data from SLC : %s1.1f seconds', (time.time() - t_xsar))
-    if dev:
-        nperseg = {'range': 2048, 'azimuth': 2048}
-        nperseg = {'range': 1024, 'azimuth': 1024}
-        nperseg = {'range': 512, 'azimuth': 512}
-        nperseg = {'range': 700, 'azimuth': 700}
-    else:
-        nperseg = {'range': 512, 'azimuth': 512}
     t0 = time.time()
-    # if False:
-    #     allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image, \
-    #     limits_sub_images = cross_spectra_core_dev_pyfftw.compute_SAR_cross_spectrum(
-    #         dsslc,
-    #         N_look=3,look_width=0.25,
-    #         look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
-    #         welsh_window='hanning',
-    #         nperseg=nperseg,
-    #         noverlap={'range' : 256,'azimuth' : 256}
-    #         ,spacing_tol=1e-3,debug_plot=False,fft_version='pyfftw',return_periodoXspec=True)
-    #     logging.info('time to get %s X-spectra : %1.1f seconds', len(splitting_image), time.time() - t0)
-    # else:
-    all_computed_cart_xspectrum = compute_SAR_cross_spectrum2(dsslc['digital_number'], N_look=3,
-                                                              look_width=0.25, look_overlap=0., look_window=None,
-                                                              range_spacing=None, welsh_window='hanning',
-                                                              nperseg={'range': 512, 'azimuth': 512},
-                                                              noverlap={'range': 256, 'azimuth': 256}, spacing_tol=1e-3)
+    all_computed_cart_xspectrum = compute_WV_intraburst_xspectra(dt=xsar_s1ds.datatree,
+                                                                 polarization='VV',
+                                                                 periodo_width={"line": 2000, "sample": 2000},
+                                                                 periodo_overlap={"line": 1000, "sample": 1000})
     logging.info('time to get %s X-spectra : %1.1f seconds', all_computed_cart_xspectrum['2tau'], time.time() - t0)
     # 3) interpolate and convert cartesian grid to polar 72,60
     #
-    z_re_new_da, z_im_new_da = average_cartesian_spec_2tau(all_computed_cart_xspectrum, nperseg)
+
+    xs = all_computed_cart_xspectrum.swap_dims({'freq_line': 'k_az', 'freq_sample': 'k_rg'})
+    xs = xspectra.symmetrize_xspectrum(xs, dim_range='k_rg', dim_azimuth='k_az')
+
+    ############################################ real part ############################
+    z_re_new_da = np.abs(xs['xspectra_2tau'].mean(dim='2tau').real)
+    z_im_new_da = xs['xspectra_2tau'].mean(dim='2tau').imag
+
     # je met ici le calcul des cwave à partir du SLC:
     t_cwave = time.time()
-    subset_ok, cspcReX, cspcImX, cspcRe, kx, ky, CWAVE_20_SLC = format_input_CWAVE_vector_from_SLC(z_re_new_da.values,
-                                                                                                   z_im_new_da.values,
-                                                                                                   incidenceangle, s0,
-                                                                                                   nv,
-                                                                                                   kx_ori=z_re_new_da.kx.values,
-                                                                                                   ky_ori=z_re_new_da.ky.values,
-                                                                                                   datedt=date_sar_dt,
-                                                                                                   lonSAR=lonsar,
-                                                                                                   latSAR=latsar,
-                                                                                                   satellite=sar_unit)
-    logging.debug('shape CWAVE SLC %s', CWAVE_20_SLC.shape)
+    spectralmoments = computeOrthogonalMoments(real_part_spectrum=z_re_new_da, imaginary_part_spectrum=z_im_new_da, kmax=KMAX_CWAVE, kmin=KMIN_CWAVE)
+    logging.debug('shape CWAVE SLC %s', spectralmoments.shape)
     logging.info('time to compute CWAVE param from SLC: %s1.1f seconds', (time.time() - t_cwave))
-    SLCWVds['CWAVE_20_SLC'] = xarray.DataArray(CWAVE_20_SLC.T, dims=['time_sar', 'cwave_coords'],
+    SLCWVds['CWAVE_20_SLC'] = xarray.DataArray(spectralmoments.T, dims=['time_sar', 'cwave_coords'],
                                                    coords={'time_sar': SLCWVds['time_sar'].values,
                                                            'cwave_coords': np.arange(20)},
                                                    attrs={
@@ -396,22 +324,25 @@ def get_SAR_SLC_quantities(one_tiff,dev=False):
     # if grid_xspec == 'cartesian':
     max_KI = 2 * np.pi / 50.
     logging.info('max_KI %s', max_KI)
-    SLCWVds = store_cart_xspec_Ntau(
-        z_re_new_da.where((abs(z_re_new_da.kx) < max_KI) & (abs(z_re_new_da.ky) < max_KI), drop=True),
-        z_im_new_da.where((abs(z_re_new_da.kx) < max_KI) & (abs(z_re_new_da.ky) < max_KI), drop=True)
-        , SLCWVds)
+    SLCWVds['cartRexspec'] = z_re_new_da
+    SLCWVds['cartImxspec'] = z_im_new_da
+    # SLCWVds = store_cart_xspec_Ntau(
+    #     z_re_new_da.where((abs(z_re_new_da.kx) < max_KI) & (abs(z_re_new_da.ky) < max_KI), drop=True),
+    #     z_im_new_da.where((abs(z_re_new_da.kx) < max_KI) & (abs(z_re_new_da.ky) < max_KI), drop=True)
+    #     , SLCWVds)
     # elif grid_xspec == 'polar':
-    xsspecCross_Polar_Re_fullspan, xsspecCross_Polar_Im_fullspan = store_pol_xspec_Ntau(all_computed_cart_xspectrum,
-                                                                                        nperseg=nperseg,
-                                                                                        platform_heading=ta)
-    z_re_tmp_no_interpolation = np.abs(all_computed_cart_xspectrum['cross-spectrum_2tau'].mean(dim='2tau').real)
-    coV, azimuuth_cutoff = get_cut_off_profile(z_re_tmp_no_interpolation, display_cutoff=False)
-    SLCWVds['azimuth_cutoff'] = xarray.DataArray([azimuuth_cutoff], dims=['time_sar'])
-    SLCWVds['crossSpectraRePol'] = xsspecCross_Polar_Re_fullspan
-    SLCWVds['crossSpectraRePol'].data = xsspecCross_Polar_Re_fullspan.values
-    SLCWVds['crossSpectraImPol'] = xsspecCross_Polar_Im_fullspan
-    SLCWVds['crossSpectraImPol'].data = xsspecCross_Polar_Im_fullspan.values
-    return SLCWVds,all_computed_cart_xspectrum,nperseg
+    # xsspecCross_Polar_Re_fullspan, xsspecCross_Polar_Im_fullspan = store_pol_xspec_Ntau(all_computed_cart_xspectrum,
+    #                                                                                     nperseg=nperseg,
+    #                                                                                     platform_heading=ta)
+    # z_re_tmp_no_interpolation = np.abs(all_computed_cart_xspectrum['cross-spectrum_2tau'].mean(dim='2tau').real)
+    # coV, azimuuth_cutoff = get_cut_off_profile(z_re_tmp_no_interpolation, display_cutoff=False)
+    SLCWVds['azimuth_cutoff'] = xarray.DataArray([all_computed_cart_xspectrum['cutoff'].values], dims=['time_sar'],
+                                                 attrs=all_computed_cart_xspectrum['cutoff'].attrs)
+    # SLCWVds['crossSpectraRePol'] = xsspecCross_Polar_Re_fullspan
+    # SLCWVds['crossSpectraRePol'].data = xsspecCross_Polar_Re_fullspan.values
+    # SLCWVds['crossSpectraImPol'] = xsspecCross_Polar_Im_fullspan
+    # SLCWVds['crossSpectraImPol'].data = xsspecCross_Polar_Im_fullspan.values
+    return SLCWVds
 
 def add_xspec_subdomains(subsetcoloc,allspecs_per_sub_domain,grid_xspec,nperseg,ta,splitting_image,lons_all,lats_all):
     """
@@ -507,7 +438,7 @@ def read_all_SAR_variables(sar_unit,date_day,alti_mission,dev=False,grid_xspec='
             logging.info('prepare coloc : %s/%s', xxx + 1, nb_match)
             logging.info('peak memory usage: %s Mbytes', resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.)
             one_tiff = list_tiff_paths[xxx]
-            SLCWVds,_,_ = get_SAR_SLC_quantities(one_tiff)
+            SLCWVds = get_SAR_SLC_quantities(one_tiff)
             # 1) read all params from Justin s dataset
             subsetcoloc0 = ds_coloc.isel(
                 time_sar=np.array([xxx]))  # { on peut selectionner plusieurs indice en meme temps avec isel}
@@ -594,8 +525,8 @@ def save_training_file(dscoloc_enriched,outputfile):
     dscoloc_enriched.attrs = glob_attrs
     dscoloc_enriched.attrs['created_on'] = '%s' % datetime.datetime.today()
     dscoloc_enriched.attrs['created_by'] = 'Antoine Grouazel'
-    dscoloc_enriched.attrs['purpose'] = 'SAR Hs NN regression exp#2'
-    dscoloc_enriched.attrs['content'] = ' SAR & Alti colocations prepared using CMEMS'
+    dscoloc_enriched.attrs['purpose'] = 'SAR Hs NN regression'
+    dscoloc_enriched.attrs['content'] = ' SAR + Alti + ww3 colocations'
     for vv in dscoloc_enriched:
         logging.debug('%s attrs: %s',vv,dscoloc_enriched[vv].attrs)
     dscoloc_enriched = dscoloc_enriched.drop('spatial_ref')
@@ -643,7 +574,7 @@ if __name__ == '__main__' :
         outdir = OUTPUTDIR
     datedt = datetime.datetime.strptime(args.date,'%Y%m%d')
     outputfile = os.path.join(outdir,datedt.strftime('%Y'),
-                              datedt.strftime('%j'),'training_D4_exp2_%s_%s_%s.nc' %(args.date,args.alti,args.sar_unit))
+                              datedt.strftime('%j'),'training_D_jan23_%s_%s_%s.nc' %(args.date,args.alti,args.sar_unit))
     logging.info('outputfile : %s',outputfile)
     if os.path.exists(os.path.dirname(outputfile)) is False :
         os.makedirs(os.path.dirname(outputfile),0o0775)

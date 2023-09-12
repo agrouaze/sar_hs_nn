@@ -116,6 +116,13 @@ def load_quach2020_model_45_std_tuned():
     return model
 
 
+
+def load_tgrange_keras_v1():
+    custom_objects = {'Gaussian_NLL': Gaussian_NLL, 'Gaussian_MSE': Gaussian_MSE}
+    ff = '/home/datawork-cersat-public/cache/project/mpc-sentinel1/analysis/s1_data_analysis/hs_nn/exp1v4/training_dataset/model_keras_period_2015_2018_SLC_spectrum_IFR_normalization_hawaiian_architecture_tgrange_July2022.h5'
+    model = tf.keras.models.load_model(ff,custom_objects=custom_objects)
+    return model
+
 # def load_like_in_notebook_train_uncertainty_with_existing():
 #     """
 #     problem I don't have the  "valid" dataset in hdf5.for now.

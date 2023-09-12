@@ -3,6 +3,8 @@ A Grouazel
 7 June 2021
 I need a script to store functions shared for building the training dataset and to perform inferences with NN model to validate the training
 """
+import pdb
+
 import os
 import numpy as np
 import logging
@@ -13,10 +15,12 @@ import copy
 import netCDF4
 import datetime
 import xarray
+import xsar
 import spectrum_clockwise_to_trigo
 import spectrum_rotation
-import xsarsea.conversion_polar_cartesian
+import conversion_polar_cartesian #from xsarseafork
 import xsarsea.cross_spectra_core
+#import cross_spectra_core_v2 #version dans fork agrouaze May 2022
 from sarhspredictor.lib.compute_CWAVE_params import format_input_CWAVE_vector_from_OCN
 from sarhspredictor.lib.sarhs import preprocess
 from sarhspredictor.lib.predict_with_quach2020_on_OCN_using_keras import main_level_0
@@ -39,42 +43,69 @@ def from_np64_to_dt(dt64):
     return datetime.datetime.utcfromtimestamp(ts)
 
 
-def get_xspectrum_SLC(slc,nb_match,dev=False):
+def get_xspectrum_SLC(slc,nb_match,dev=False,resolution=None,resampling=None):
     """
 
     :param slc:
     :param nb_match:
     :param dev:
+    :params resampling : rasterio.enums.Resampling.rms for instance
     :return:
     """
     datedt_slc = datetime.datetime.strptime(os.path.basename(slc).split('-')[4],
                                             '%Y%m%dt%H%M%S')  # cette date change bien mem pour les data en 2015Z
-    dsslc = xsarsea.cross_spectra_core.read_slc(slc)
+    #sub_swath_IDs = xsar.Sentinel1Meta(os.path.dirname(os.path.dirname(slc))).subdatasets
+    imagette_number = os.path.basename(slc).split('-')[-1].replace('.tiff', '')
+    # jouvre le smeta pour ensuite verifier que lindice trouver par ma methode es ok
+    wv_slc_meta = xsar.sentinel1_meta.Sentinel1Meta(
+        "SENTINEL1_DS:%s:WV%s" % (os.path.dirname(os.path.dirname(slc)), imagette_number))
+    #indice = xsarsea.cross_spectra_core_v2.get_imagette_indice(slc, wv_slc_meta)
+    #print(indice,type(indice),imagette_number,type(imagette_number))
+    #assert str(indice)==imagette_number
+    # jouvre le dataset
+    dsslc_raw = xsar.sentinel1_dataset.Sentinel1Dataset("SENTINEL1_DS:%s:WV_%s" % (os.path.dirname(os.path.dirname(slc)),imagette_number))
+    dsslc = xsarsea.cross_spectra_core.read_slc(dsslc_raw.dataset)
+    # if resolution is not None:
+    #     if resolution['atrack'] == 1 and resolution['xtrack'] == 1:
+    #         # June 2021, a patch because currently resolution 1:1 for image and rasterio returns an error
+    #         s1ds = xsar.Sentinel1Dataset(wv_slc_meta, resolution=None, resampling=None)
+    #     else:
+    #         s1ds = xsar.Sentinel1Dataset(wv_slc_meta, resolution=resolution, resampling=resampling)
+    # else:
+    #     s1ds = xsar.Sentinel1Dataset(wv_slc_meta)
+    #je fais qlq changement mineur sur les coords
+    #dsslc = cross_spectra_core_v2.read_slc(dsslc_raw)
+
     if dev:
         nperseg = {'range' : 2048,'azimuth' : 2048}
     else:
         nperseg = {'range' : 512,'azimuth' : 512}
     t0 = time.time()
-    allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image, \
-    limits_sub_images = xsarsea.cross_spectra_core.compute_SAR_cross_spectrum(
-        dsslc,
-        N_look=3,look_width=0.25,
-        look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
-        welsh_window='hanning',
-        nperseg=nperseg,
-        noverlap={'range' : 256,'azimuth' : 256}
-        ,spacing_tol=1e-3,debug_plot=False,return_periodoXspec=False)
-    logging.info('time to get %s X-spectra : %1.1f seconds',len(splitting_image),time.time() - t0)
+    #allspecs,frange,fazimuth,allspecs_per_sub_domain,splitting_image, \
+    #limits_sub_images \
+    allspecs = xsarsea.cross_spectra_core.compute_SAR_cross_spectrum2(dsslc['digital_number'].isel(pol=0), N_look=3,
+                                                                      look_width=0.25, look_overlap=0., look_window=None,
+                                range_spacing=None, welsh_window='hanning', nperseg=nperseg,
+                                noverlap={'range': 256, 'azimuth': 256}, spacing_tol=1e-3)
+    # allspecs, tfazi, tfran    = cross_spectra_core_v2.compute_SAR_cross_spectrum2(
+    #     dsslc['digital_number'].isel(pol=0),
+    #     N_look=3,look_width=0.25,
+    #     look_overlap=0.,look_window=None,  # range_spacing=slc.attrs['rangeSpacing']
+    #     welsh_window='hanning',
+    #     nperseg=nperseg,
+    #     noverlap={'range' : 256,'azimuth' : 256}
+    #     ,spacing_tol=1e-3,debug_plot=False,return_periodoXspec=False)
+    logging.info('time to get %s X-spectra : %1.1f seconds',len(allspecs),time.time() - t0)
     # 3) interpolate and convert cartesian grid to polar 72,60
     xspecRe = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').real)
-    if False:
-        crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
-                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
-            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-    else:# version corrected January 2022
-        crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
-                                                                                    ksampling='log',
-                                                                                    **{'k' : reference_oswK_1145m_60pts})
+    # if False:
+    #     crossSpectraRePol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
+    #                                                                                ksampling='log',**{'Nk' : 60,'kmin' :
+    #         reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
+    # else:# version corrected January 2022
+    crossSpectraRePol = conversion_polar_cartesian.from_xCartesianSpectrum(xspecRe,Nphi=72,
+                                                                                ksampling='log',
+                                                                                **{'k' : reference_oswK_1145m_60pts})
     crossSpectraRePol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
         crossSpectraRePol)
     #crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,90.)  # This is for having origin at North
@@ -82,16 +113,16 @@ def get_xspectrum_SLC(slc,nb_match,dev=False):
     crossSpectraRePol = spectrum_rotation.apply_rotation(crossSpectraRePol,dsslc.attrs['platform_heading'])
     crossSpectraRePolval = copy.copy(crossSpectraRePol.values.squeeze())
 
-    xspecIm = np.abs(allspecs['cross-spectrum_2tau'].mean(dim='2tau').imag)
-    if False:
-        crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm,Nphi=72,
-                                                                                   ksampling='log',**{'Nk' : 60,'kmin' :
-            reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
-    else:  # version corrected January 2022
-        crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm, Nphi=72,
-                                                                                       ksampling='log',
-                                                                                       **{
-                                                                                           'k': reference_oswK_1145m_60pts})
+    xspecIm = allspecs['cross-spectrum_2tau'].mean(dim='2tau').imag # correction 19 May 2022,  removed the abs()
+    # if False:
+    #     crossSpectraImPol = xsarsea.conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm,Nphi=72,
+    #                                                                                ksampling='log',**{'Nk' : 60,'kmin' :
+    #         reference_oswK_1145m_60pts[0],'kmax' : reference_oswK_1145m_60pts[-1]})
+    # else:  # version corrected January 2022
+    crossSpectraImPol = conversion_polar_cartesian.from_xCartesianSpectrum(xspecIm, Nphi=72,
+                                                                                   ksampling='log',
+                                                                                   **{
+                                                                                       'k': reference_oswK_1145m_60pts})
     crossSpectraImPol = spectrum_clockwise_to_trigo.apply_clockwise_to_trigo(
         crossSpectraImPol)
     crossSpectraImPol = spectrum_rotation.apply_rotation(crossSpectraImPol,-90.)  # This is for having origin at North, -90 instead of 90 January 22
@@ -99,13 +130,15 @@ def get_xspectrum_SLC(slc,nb_match,dev=False):
     crossSpectraImPolval = copy.copy(crossSpectraImPol.values.squeeze())
 
     # duplicate the X spectra and CWAVE params for the N number of colcoations with this particular SAR acquisition
-    multi_xpsec_im = np.tile(crossSpectraImPol.values,(nb_match,1,1))
-    multi_xpsec_re = np.tile(crossSpectraRePol.values,(nb_match,1,1))
+    #multi_xpsec_im = np.tile(crossSpectraImPol.values,(nb_match,1,1))
+    #multi_xpsec_re = np.tile(crossSpectraRePol.values,(nb_match,1,1))
+    multi_xpsec_im = crossSpectraImPol.values[np.newaxis,:,:]
+    multi_xpsec_re = crossSpectraRePol.values[np.newaxis,:,:]
     logging.info('multi_xpsec_im %s',multi_xpsec_im.shape)
     times_bidons = [
         datedt_slc]  # dirty trick, j invente des dates pour pouvoir ensuite aggregger les colocs ensemble a coup de mfdataset
-    for ttt in range(1,nb_match) :
-        times_bidons.append(datedt_slc + datetime.timedelta(seconds=ttt))
+    # for ttt in range(1,nb_match) :
+    #     times_bidons.append(datedt_slc + datetime.timedelta(seconds=ttt))
     logging.info('times_bidons : %s',times_bidons)
     crossSpectraImPol_xa = xarray.DataArray(multi_xpsec_im,dims=['time','k','phi'],
                                             coords={'time' : times_bidons,
