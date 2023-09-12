@@ -4,9 +4,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "sarhspredictor"
-version = "0.0.1"
+version = "0.0.2"
 description = "Hs prediction from SAR"
-license = "Apache-2.0"
+license = "MIT"
 authors = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
 maintainers = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
 readme = "README.md"
@@ -14,7 +14,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.7",
 ]
@@ -40,20 +40,20 @@ default = true
 [tool.poetry.dependencies]
 #sarhspredictor = { path = "./sarhspredictor/", develop = true }
 python = ">= 3.7, < 4"
-poetry = "1.1.4"
-keras="2.3.1"
-keras-applications="1.0.8"
-keras-preprocessing="1.1.0"
-numpy="1.19.2"
-scipy="1.5.2"
+poetry = ""
+keras = ""
+keras-applications = ""
+keras-preprocessing = ""
+numpy = ""
+scipy = ""
 setuptools= ""
-tensorflow= ">=1.15.0"
-sherpa="4.12.1"
-xarray="0.16.2"
-netcdf4="1.5.4"
+tensorflow= ""
+sherpa = ""
+xarray = ""
+netcdf4 = ""
 
 # log management
-loguru = "0.5"
+loguru = ""
 
 # template management
 jinja2 = "^2"
