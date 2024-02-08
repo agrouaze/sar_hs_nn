@@ -1,98 +1,49 @@
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
+[project]
 name = "sarhspredictor"
-version = "0.0.2"
-description = "Hs prediction from SAR"
-license = "MIT"
-authors = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
-maintainers = ["Antoine GROUAZEL <antoine.grouazel@ifremer.fr>"]
-readme = "README.md"
+requires-python = ">= 3.8"
+description = "Python library to predict significant wave height from SAR images"
+readme.file = "README.md"
+readme.content-type = "text/markdown"
+license = {text = "MIT"}
+keywords = ["SAR", "sea-state", "reseach", "neural-network","tensorflow"]
+authors = [
+  {name = "Antoine Grouazel"}
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT Software License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3",
 ]
-keywords = ["ifremer", "utilities","sar","hs","NN"]
-
-exclude = [
-    # exclude tests directory from wheel (only on sdist)
-    { path= "tests", format = "wheel" }
-]
-
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-style = "semver"
-pattern = "^v?(?P<base>\\d+\\.\\d+\\.\\d+)(-?((?P<stage>[a-zA-Z]+)\\.?(?P<revision>\\d+)?))?$"
-
-[[tool.poetry.source]]
-# Ifremer PyPI repository
-name = "nexus-isi"
-url = "https://nexus-test.ifremer.fr/repository/pypi-public-release/simple"
-default = true
-
-[tool.poetry.dependencies]
-#sarhspredictor = { path = "./sarhspredictor/", develop = true }
-python = ">= 3.7, < 4"
-poetry = ""
-keras = ""
-keras-applications = ""
-keras-preprocessing = ""
-numpy = ""
-scipy = ""
-setuptools= ""
-tensorflow= ""
-sherpa = ""
-xarray = ""
-netcdf4 = ""
-
-# log management
-loguru = ""
-
-# template management
-jinja2 = "^2"
-click = "^7.1"
-
-[tool.poetry.dev-dependencies]
-
-# static analysis
-flake8 = "^3.8"
-flake8-docstrings = "^1.5"
-pylint = "^2.6"
-
-# unit tests
-pytest = "^6"
-pytest-cov = "^2"
-pytest-benchmark = "^3"
-
-# documentation
-mkdocs = "^1"
-mkapi = "^1"
-
-[tool.poetry.scripts]
-greet = "python_bootstrap.greeting.cli:main"
-
-
-[tool.pylint.messages_control]
-disable = [
-    "bad-continuation",
-    "missing-function-docstring",
-    "missing-module-docstring",
-    "invalid-name"
+dependencies = [
+    "xarray",
+    "scipy",
+    "netCDF4",
+    "pandas",
+    "numpy",
+    "h5py",
+    "importlib_resources",
+    'tqdm'
 ]
 
-[tool.pylint.format]
-max-line-length = 120
+dynamic = ["version"]
+
+[project.optional-dependencies]
+prediction = ["tensorflow","keras"]
+
+
+[build-system]
+requires = ["setuptools>=64.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sarhspredictor"]
+
+[tool.setuptools_scm]
+fallback_version = "999"
 
 [tool.isort]
-line_length = 120
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
+profile = "black"
+skip_gitignore = true
+float_to_top = true
+default_section = "THIRDPARTY"
+known_first_party = "sarhspredictor"
+
+[project.scripts]
